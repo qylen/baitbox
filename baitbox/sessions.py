@@ -1,6 +1,7 @@
 """State management for active SSH sessions in BaitBox."""
 
 from __future__ import annotations
+import threading
 import time
 from typing import Any, Dict, List
 import paramiko
@@ -51,20 +52,25 @@ class SSHSession:
 class SessionManager:
     def __init__(self) -> None:
         self.sessions: Dict[str, SSHSession] = {}
+        self._lock = threading.RLock()
 
     def register(self, session: SSHSession) -> None:
-        self.sessions[session.session_id] = session
+        with self._lock:
+            self.sessions[session.session_id] = session
 
     def unregister(self, session_id: str) -> None:
-        if session_id in self.sessions:
-            del self.sessions[session_id]
+        with self._lock:
+            self.sessions.pop(session_id, None)
 
     def get_session(self, session_id: str) -> SSHSession | None:
-        return self.sessions.get(session_id)
+        with self._lock:
+            return self.sessions.get(session_id)
 
     def list_sessions(self) -> List[Dict[str, Any]]:
+        with self._lock:
+            sessions = list(self.sessions.values())
         res = []
-        for s in self.sessions.values():
+        for s in sessions:
             res.append({
                 "session_id": s.session_id,
                 "src_ip": s.src_ip,
@@ -72,6 +78,8 @@ class SessionManager:
                 "username": s.username,
                 "login_time": s.login_time,
                 "last_seen": s.last_seen,
+                "duration_seconds": round(time.time() - s.login_time, 2),
+                "idle_seconds": round(time.time() - s.last_seen, 2),
                 "cwd": s.cwd,
                 "commands": s.commands[-10:]  # last 10 commands
             })

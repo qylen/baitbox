@@ -81,18 +81,44 @@ async def get_recent_events(limit: int = 50) -> list[dict[str, Any]]:
 
 
 async def get_stats() -> dict[str, Any]:
+    """Return aggregate telemetry for dashboards and API clients."""
     async with aiosqlite.connect(DB_NAME) as db:
         db.row_factory = aiosqlite.Row
         total = (await (await db.execute("SELECT COUNT(*) AS count FROM events")).fetchone())["count"]
         by_protocol = await (await db.execute(
             "SELECT protocol, COUNT(*) AS count FROM events GROUP BY protocol ORDER BY count DESC"
         )).fetchall()
+        by_event_type = await (await db.execute(
+            "SELECT event_type, COUNT(*) AS count FROM events GROUP BY event_type ORDER BY count DESC"
+        )).fetchall()
         top_ips = await (await db.execute(
             "SELECT src_ip, COUNT(*) AS count FROM events GROUP BY src_ip ORDER BY count DESC LIMIT 10"
+        )).fetchall()
+        recent_commands = await (await db.execute(
+            """
+            SELECT timestamp, src_ip, json_extract(payload, '$.command') AS command
+            FROM events
+            WHERE protocol = 'SSH' AND event_type = 'command'
+            ORDER BY id DESC
+            LIMIT 10
+            """
+        )).fetchall()
+        top_passwords = await (await db.execute(
+            """
+            SELECT json_extract(payload, '$.password') AS password, COUNT(*) AS count
+            FROM events
+            WHERE event_type = 'auth_attempt' AND json_extract(payload, '$.password') IS NOT NULL
+            GROUP BY password
+            ORDER BY count DESC
+            LIMIT 10
+            """
         )).fetchall()
 
     return {
         "total_events": total,
         "by_protocol": [dict(row) for row in by_protocol],
+        "by_event_type": [dict(row) for row in by_event_type],
         "top_ips": [dict(row) for row in top_ips],
+        "top_passwords": [dict(row) for row in top_passwords],
+        "recent_commands": [dict(row) for row in recent_commands],
     }

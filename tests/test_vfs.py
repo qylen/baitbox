@@ -45,3 +45,19 @@ def test_vfs_operations() -> None:
     # remove directory
     assert vfs.rmdir("/root/subfolder")
     assert not vfs.exists("/root/subfolder")
+
+
+def test_vfs_stat_copy_and_move() -> None:
+    vfs = VirtualFilesystem()
+
+    info = vfs.stat("/root/secrets.txt")
+    assert info is not None
+    assert info["type"] == "file"
+    assert info["size"] > 0
+
+    assert vfs.copy("/root/secrets.txt", "/root/secrets.copy")
+    assert vfs.read_file("/root/secrets.copy") == vfs.read_file("/root/secrets.txt")
+
+    assert vfs.move("/root/secrets.copy", "/tmp/secrets.moved")
+    assert not vfs.exists("/root/secrets.copy")
+    assert vfs.exists("/tmp/secrets.moved")

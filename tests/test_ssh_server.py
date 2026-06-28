@@ -55,3 +55,25 @@ def test_stateful_cd_and_ls() -> None:
     assert b"index.php" in response
     assert b"wp-config.php" in response
     assert close is False
+
+
+def test_execute_session_command_file_inspection_and_copy_move() -> None:
+    session = _setup_mock_session()
+
+    response, close = execute_session_command(session, "stat secrets.txt")
+    assert b"File: secrets.txt" in response
+    assert close is False
+
+    response, close = execute_session_command(session, "cp secrets.txt /tmp/secrets.copy")
+    assert response == b""
+    assert session.vfs.exists("/tmp/secrets.copy")
+    assert close is False
+
+    response, close = execute_session_command(session, "mv /tmp/secrets.copy /tmp/secrets.moved")
+    assert response == b""
+    assert session.vfs.exists("/tmp/secrets.moved")
+    assert close is False
+
+    response, close = execute_session_command(session, "head -n 1 /tmp/secrets.moved")
+    assert b"AWS_ACCESS_KEY_ID" in response
+    assert close is False

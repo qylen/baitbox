@@ -295,6 +295,76 @@ def execute_session_command(session: SSHSession, command: str) -> tuple[bytes, b
         else:
             return f"{content_part}\r\n".encode(), False
 
+    if executable == "stat":
+        if not args:
+            return b"stat: missing operand\r\n", False
+        target = args[0]
+        target_path = session.vfs._normalize_path(session.cwd, target)
+        info = session.vfs.stat(target_path)
+        if not info:
+            return f"stat: cannot statx '{target}': No such file or directory\r\n".encode(), False
+        return (
+            f"  File: {info['name']}\r\n"
+            f"  Size: {info['size']}\tBlocks: 8          IO Block: 4096   {info['type']}\r\n"
+            f"Access: ({info['mode']})  Uid: (    0/    root)   Gid: (    0/    root)\r\n"
+        ).encode(), False
+
+    if executable == "cp":
+        if len(args) < 2:
+            return b"cp: missing file operand\r\n", False
+        source = session.vfs._normalize_path(session.cwd, args[-2])
+        destination = session.vfs._normalize_path(session.cwd, args[-1])
+        if session.vfs.is_dir(destination):
+            destination = session.vfs._normalize_path(destination, args[-2].rstrip('/').split('/')[-1])
+        if not session.vfs.copy(source, destination):
+            return f"cp: cannot stat '{args[-2]}': No such file or directory\r\n".encode(), False
+        return b"", False
+
+    if executable == "mv":
+        if len(args) < 2:
+            return b"mv: missing file operand\r\n", False
+        source = session.vfs._normalize_path(session.cwd, args[-2])
+        destination = session.vfs._normalize_path(session.cwd, args[-1])
+        if session.vfs.is_dir(destination):
+            destination = session.vfs._normalize_path(destination, args[-2].rstrip('/').split('/')[-1])
+        if not session.vfs.move(source, destination):
+            return f"mv: cannot move '{args[-2]}' to '{args[-1]}'\r\n".encode(), False
+        return b"", False
+
+    if executable == "head":
+        if not args:
+            return b"head: missing file operand\r\n", False
+        count = 10
+        files = []
+        i = 0
+        while i < len(args):
+            if args[i] == "-n" and i + 1 < len(args):
+                try:
+                    count = max(0, int(args[i + 1]))
+                except ValueError:
+                    pass
+                i += 2
+                continue
+            if not args[i].startswith("-"):
+                files.append(args[i])
+            i += 1
+        target = files[0] if files else args[-1]
+        target_path = session.vfs._normalize_path(session.cwd, target)
+        content = session.vfs.read_file(target_path)
+        if content is None:
+            return f"head: cannot open '{target}' for reading: No such file or directory\r\n".encode(), False
+        return ("\r\n".join(content.decode("utf-8", errors="replace").splitlines()[:count]) + "\r\n").encode(), False
+
+    if executable == "tail":
+        if not args:
+            return b"tail: missing file operand\r\n", False
+        target = [a for a in args if not a.startswith("-")][-1]
+        target_path = session.vfs._normalize_path(session.cwd, target)
+        content = session.vfs.read_file(target_path)
+        if content is None:
+            return f"tail: cannot open '{target}' for reading: No such file or directory\r\n".encode(), False
+        return ("\r\n".join(content.decode("utf-8", errors="replace").splitlines()[-10:]) + "\r\n").encode(), False
+
     if executable in {"wget", "curl"}:
         url = args[-1] if args else "index.html"
         filename = url.split("/")[-1] if "/" in url else "index.html"

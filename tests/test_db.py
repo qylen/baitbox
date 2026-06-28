@@ -21,16 +21,20 @@ class DatabaseTests(unittest.TestCase):
             await db.init_db()
             first = await db.log_event("192.0.2.1", "SSH", "auth_attempt", {"username": "root", "password": "toor"})
             second = await db.log_event("198.51.100.2", "HTTP", "request", {"path": "/wp-admin"})
+            await db.log_event("192.0.2.1", "SSH", "command", {"command": "cat /etc/passwd"})
             events = await db.get_recent_events()
             stats = await db.get_stats()
             return first, second, events, stats
 
         first, second, events, stats = asyncio.run(scenario())
 
-        self.assertEqual([event["id"] for event in events], [first["id"], second["id"]])
+        self.assertEqual([event["id"] for event in events], [first["id"], second["id"], second["id"] + 1])
         self.assertEqual(events[0]["payload"]["password"], "toor")
-        self.assertEqual(stats["total_events"], 2)
+        self.assertEqual(stats["total_events"], 3)
         self.assertEqual({row["src_ip"] for row in stats["top_ips"]}, {"192.0.2.1", "198.51.100.2"})
+        self.assertEqual(stats["top_passwords"][0]["password"], "toor")
+        self.assertEqual(stats["recent_commands"][0]["command"], "cat /etc/passwd")
+        self.assertIn({"event_type": "command", "count": 1}, stats["by_event_type"])
 
 
 if __name__ == "__main__":

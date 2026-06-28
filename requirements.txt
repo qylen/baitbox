@@ -1,0 +1,6 @@
+fastapi==0.104.1
+uvicorn==0.24.0.post1
+paramiko==3.3.1
+aiosqlite==0.19.0
+rich==13.6.0
+websockets==12.0

@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import csv
+import io
 import json
 from http.cookies import SimpleCookie
+from ipaddress import ip_address
 from urllib.parse import parse_qs
 from pathlib import Path
 from typing import Any
@@ -97,7 +100,6 @@ class AuthMiddleware:
 
             if not token and scope["type"] == "websocket":
                 query_string = scope.get("query_string", b"").decode("utf-8")
-                from urllib.parse import parse_qs
                 params = parse_qs(query_string)
                 if "token" in params:
                     token = params["token"][0]
@@ -186,12 +188,29 @@ DB_PASSWORD=REDACTED_BY_BAITBOX
 def _client_ip(request: Request) -> str:
     forwarded_for = request.headers.get("x-forwarded-for")
     if forwarded_for:
+        # Only trust the left-most value; proxies append subsequent hops.
         return forwarded_for.split(",", 1)[0].strip()
     return request.client.host if request.client else "unknown"
 
 
+def _validate_ip(value: str) -> str:
+    """Normalize and validate user-supplied IP path parameters."""
+    try:
+        return str(ip_address(value))
+    except ValueError as exc:
+        raise ValueError(f"Invalid IP address: {value}") from exc
+
+
+def _limit_value(limit: int, maximum: int = 500) -> int:
+    return min(max(limit, 1), maximum)
+
+
 async def _request_payload(request: Request) -> dict[str, Any]:
     body = await request.body()
+    truncated = len(body) > settings.http_max_body_bytes
+    if truncated:
+        body = body[: settings.http_max_body_bytes]
+
     form_data: dict[str, Any] = {}
     if body:
         content_type = request.headers.get("content-type", "")
@@ -216,6 +235,7 @@ async def _request_payload(request: Request) -> dict[str, Any]:
             "referer": request.headers.get("referer", ""),
         },
         "body": form_data,
+        "body_truncated": truncated,
     }
 
 
@@ -244,6 +264,7 @@ async def login(username: str = Form(...), password: str = Form(...)) -> Respons
             httponly=True,
             samesite="lax",
             max_age=24 * 60 * 60,
+            secure=settings.session_cookie_secure,
         )
         return response
     return JSONResponse(
@@ -264,10 +285,15 @@ async def dashboard() -> str:
     return INDEX_HTML.read_text(encoding="utf-8")
 
 
+@app.get("/healthz")
+async def healthz() -> dict[str, Any]:
+    """Lightweight liveness probe for containers and orchestrators."""
+    return {"status": "ok", "service": "baitbox", "version": app.version}
+
 
 @app.get("/api/events")
 async def api_events(limit: int = 100) -> list[dict[str, Any]]:
-    events = await get_recent_events(limit=min(max(limit, 1), 500))
+    events = await get_recent_events(limit=_limit_value(limit))
     # Enrich with cached GeoIP and threat metrics
     try:
         from ..geoip import get_cached
@@ -284,6 +310,27 @@ async def api_events(limit: int = 100) -> list[dict[str, Any]]:
         pass
     return events
 
+
+@app.get("/api/events/export")
+async def api_events_export(limit: int = 500, format: str = "json") -> Response:
+    """Export recent events as JSON or CSV for incident review."""
+    events = await get_recent_events(limit=_limit_value(limit, maximum=5000))
+    if format.lower() == "csv":
+        output = io.StringIO()
+        writer = csv.DictWriter(
+            output,
+            fieldnames=["id", "timestamp", "src_ip", "protocol", "event_type", "payload"],
+        )
+        writer.writeheader()
+        for event in events:
+            writer.writerow({**event, "payload": json.dumps(event.get("payload", {}), sort_keys=True)})
+        return Response(
+            output.getvalue(),
+            media_type="text/csv",
+            headers={"Content-Disposition": "attachment; filename=baitbox-events.csv"},
+        )
+
+    return JSONResponse({"events": events, "count": len(events)})
 
 
 @app.get("/api/stats")
@@ -330,6 +377,10 @@ async def api_kill_session(session_id: str) -> dict[str, Any]:
 
 @app.post("/api/block/{ip}")
 async def api_block_ip(ip: str) -> dict[str, Any]:
+    try:
+        ip = _validate_ip(ip)
+    except ValueError as exc:
+        return {"status": "error", "message": str(exc)}
     block_ip(ip)
     # Also terminate any active SSH sessions from this IP
     from ..sessions import session_manager
@@ -347,6 +398,10 @@ async def api_block_ip(ip: str) -> dict[str, Any]:
 
 @app.post("/api/unblock/{ip}")
 async def api_unblock_ip(ip: str) -> dict[str, Any]:
+    try:
+        ip = _validate_ip(ip)
+    except ValueError as exc:
+        return {"status": "error", "message": str(exc)}
     unblock_ip(ip)
     return {"status": "ok", "message": f"IP {ip} unblocked."}
 
@@ -356,12 +411,20 @@ async def api_threat(ip: str) -> dict[str, Any]:
     """Return the current in-memory anomaly score for an IP address."""
     from ..anomaly import get_threat_score
 
+    try:
+        ip = _validate_ip(ip)
+    except ValueError as exc:
+        return {"status": "error", "message": str(exc)}
     return get_threat_score(ip)
 
 
 @app.get("/api/geoip/{ip}")
 async def api_geoip(ip: str) -> dict[str, Any]:
     """Perform a server-side GeoIP lookup (rate-limited and cached)."""
+    try:
+        ip = _validate_ip(ip)
+    except ValueError as exc:
+        return {"status": "error", "message": str(exc)}
     try:
         from ..geoip import lookup_ip
         return await lookup_ip(ip)

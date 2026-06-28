@@ -7,6 +7,8 @@
 
 > **BaitBox** is a zero-config, multi-protocol honeypot for homelabbers and security researchers. Drop attackers into a stateful fake filesystem, watch them try to pivot, and get real-time alerts — all from a beautiful cyber command-center dashboard.
 
+<img width="1280" height="720" alt="y" src="https://github.com/user-attachments/assets/6ef378cd-ddf3-40c8-808e-423c1ccb95fd" />
+
 ## 🚀 Features
 
 - **🛡️ Multi-Protocol Honeypot:** Simultaneously traps SSH, HTTP, and Telnet attackers.

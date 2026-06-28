@@ -222,6 +222,8 @@ async def websocket_feed(websocket: WebSocket) -> None:
 @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"])
 async def honeypot(request: Request, path: str) -> Response:
     src_ip = _client_ip(request)
+    if is_blocked(src_ip):
+        return JSONResponse({"status": "blocked"}, status_code=403)
 
     # Log every probe
     is_probe = request.url.path in _DECOY_PATHS

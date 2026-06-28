@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import time
 from typing import Any
 
 import aiosqlite
@@ -30,6 +31,8 @@ async def init_db() -> None:
         await db.execute("CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_events_src_ip ON events(src_ip)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_events_protocol ON events(protocol)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_events_protocol_type ON events(protocol, event_type)")
         # GeoIP cache table
         await db.execute(
             """
@@ -40,6 +43,43 @@ async def init_db() -> None:
             )
             """
         )
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_geoip_cache_expires ON geoip_cache(expires_at)")
+        await db.commit()
+
+
+async def get_geoip_cache(ip: str) -> dict[str, Any] | None:
+    """Return a non-expired GeoIP cache entry from SQLite, if present."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        row = await (
+            await db.execute(
+                "SELECT data, expires_at FROM geoip_cache WHERE ip = ?",
+                (ip,),
+            )
+        ).fetchone()
+
+    if not row or float(row["expires_at"]) <= time.time():
+        return None
+
+    try:
+        return json.loads(row["data"])
+    except json.JSONDecodeError:
+        return None
+
+
+async def set_geoip_cache(ip: str, data: dict[str, Any], ttl: int = 3600) -> None:
+    """Persist GeoIP lookup data so restarts do not immediately refetch it."""
+    expires_at = time.time() + ttl
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute(
+            """
+            INSERT INTO geoip_cache (ip, data, expires_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(ip) DO UPDATE SET data = excluded.data, expires_at = excluded.expires_at
+            """,
+            (ip, json.dumps(data, sort_keys=True), expires_at),
+        )
+        await db.execute("DELETE FROM geoip_cache WHERE expires_at <= ?", (time.time(),))
         await db.commit()
 
 

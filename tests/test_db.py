@@ -37,5 +37,32 @@ class DatabaseTests(unittest.TestCase):
         self.assertIn({"event_type": "command", "count": 1}, stats["by_event_type"])
 
 
+class GeoIPCacheTests(unittest.TestCase):
+    def setUp(self):
+        self.tmpdir = tempfile.TemporaryDirectory()
+        self.old_db_name = db.DB_NAME
+        db.DB_NAME = str(Path(self.tmpdir.name) / "events.db")
+
+    def tearDown(self):
+        db.DB_NAME = self.old_db_name
+        self.tmpdir.cleanup()
+
+    def test_geoip_cache_round_trip_and_expiry(self):
+        async def scenario():
+            await db.init_db()
+            data = {"ip": "203.0.113.10", "country": "Example", "threat_score": 40}
+            await db.set_geoip_cache("203.0.113.10", data, ttl=60)
+            cached = await db.get_geoip_cache("203.0.113.10")
+            await db.set_geoip_cache("203.0.113.11", {"ip": "203.0.113.11"}, ttl=-1)
+            expired = await db.get_geoip_cache("203.0.113.11")
+            return cached, expired
+
+        cached, expired = asyncio.run(scenario())
+
+        self.assertEqual(cached["country"], "Example")
+        self.assertEqual(cached["threat_score"], 40)
+        self.assertIsNone(expired)
+
+
 if __name__ == "__main__":
     unittest.main()

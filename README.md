@@ -103,6 +103,10 @@ BaitBox can be configured with environment variables:
 | `BAITBOX_DASHBOARD_HOST` | `0.0.0.0` | Dashboard/HTTP honeypot bind address. |
 | `BAITBOX_DASHBOARD_PORT` | `8000` | Dashboard/HTTP honeypot port. |
 | `BAITBOX_DB` | `baitbox.db` | SQLite database path. |
+| `BAITBOX_MAX_EVENTS` | `100` | Maximum dashboard events retained client-side. |
+| `BAITBOX_SSH_HOST_KEY` | _(empty)_ | Optional RSA host-key path. If the file does not exist, BaitBox creates it so SSH clients see a stable host key between restarts. |
+| `BAITBOX_SSH_BACKLOG` | `100` | TCP listen backlog for the SSH honeypot. |
+| `BAITBOX_SSH_CHANNEL_TIMEOUT` | `20` | Seconds to wait for an SSH shell or exec request before closing an idle channel. |
 
 ## 📸 Screenshots
 

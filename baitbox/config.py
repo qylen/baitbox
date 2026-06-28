@@ -29,5 +29,10 @@ class Settings:
     # Banner customisation
     ssh_banner_hostname: str = os.getenv("BAITBOX_SSH_HOSTNAME", "web-prod-01")
 
+    # Dashboard Authentication
+    dashboard_username: str = os.getenv("BAITBOX_DASHBOARD_USER", "admin")
+    dashboard_password: str = os.getenv("BAITBOX_DASHBOARD_PASSWORD", "admin")
+    jwt_secret: str = os.getenv("BAITBOX_JWT_SECRET", "baitbox-super-secret-key-change-me")
+
 
 settings = Settings()

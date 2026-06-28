@@ -44,6 +44,28 @@ async def init_db() -> None:
             """
         )
         await db.execute("CREATE INDEX IF NOT EXISTS idx_geoip_cache_expires ON geoip_cache(expires_at)")
+        # Users table for dashboard auth
+        await db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+                username TEXT PRIMARY KEY,
+                password_hash TEXT NOT NULL
+            )
+            """
+        )
+        await db.commit()
+
+        # Ensure the configured user exists and is up to date
+        import bcrypt
+        hashed = bcrypt.hashpw(settings.dashboard_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+        await db.execute(
+            """
+            INSERT INTO users (username, password_hash)
+            VALUES (?, ?)
+            ON CONFLICT(username) DO UPDATE SET password_hash = excluded.password_hash
+            """,
+            (settings.dashboard_username, hashed),
+        )
         await db.commit()
 
 
@@ -206,3 +228,17 @@ async def get_stats() -> dict[str, Any]:
         "hourly_events": [dict(row) for row in hourly],
         "top_http_paths": [dict(row) for row in top_paths],
     }
+
+
+async def get_user_password_hash(username: str) -> str | None:
+    """Retrieve the hashed password for a user from the SQLite database."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        db.row_factory = aiosqlite.Row
+        row = await (
+            await db.execute(
+                "SELECT password_hash FROM users WHERE username = ?",
+                (username,),
+            )
+        ).fetchone()
+    return row["password_hash"] if row else None
+

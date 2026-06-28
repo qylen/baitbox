@@ -21,20 +21,140 @@ from ..ratelimit import (
     unblock_ip,
 )
 
+import jwt
+import datetime as dt
+import bcrypt
+from fastapi import Form
+from fastapi.responses import RedirectResponse
+from starlette.types import ASGIApp, Receive, Scope, Send
+from ..config import settings
+from ..db import get_user_password_hash
+
 STATIC_DIR = Path(__file__).resolve().parents[1] / "static"
 INDEX_HTML = STATIC_DIR / "index.html"
+LOGIN_HTML = STATIC_DIR / "login.html"
+
+
+def create_jwt_token(username: str) -> str:
+    payload = {
+        "sub": username,
+        "exp": dt.datetime.now(dt.UTC) + dt.timedelta(hours=24),
+    }
+    return jwt.encode(payload, settings.jwt_secret, algorithm="HS256")
+
+
+def verify_jwt_token(token: str) -> str | None:
+    try:
+        payload = jwt.decode(token, settings.jwt_secret, algorithms=["HS256"])
+        return payload.get("sub")
+    except jwt.PyJWTError:
+        return None
+
+
+async def verify_user_credentials(username: str, password: str) -> bool:
+    password_hash = await get_user_password_hash(username)
+    if not password_hash:
+        return False
+    try:
+        return bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
+    except Exception:
+        return False
+
+
+class AuthMiddleware:
+    def __init__(self, app: ASGIApp):
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] not in ("http", "websocket"):
+            await self.app(scope, receive, send)
+            return
+
+        path = scope.get("path", "")
+
+        is_dashboard_route = (
+            path == "/"
+            or path.startswith("/api/")
+            or path == "/ws/feed"
+        )
+        is_public = path in ("/login", "/logout", "/api/auth/login")
+
+        if is_dashboard_route and not is_public:
+            headers = dict(scope.get("headers", []))
+            cookie_header = headers.get(b"cookie", b"").decode("utf-8")
+
+            cookies = {}
+            for cookie in cookie_header.split(";"):
+                if "=" in cookie:
+                    k, v = cookie.strip().split("=", 1)
+                    cookies[k] = v
+
+            token = cookies.get("session_token")
+
+            if not token:
+                auth_header = headers.get(b"authorization", b"").decode("utf-8")
+                if auth_header.startswith("Bearer "):
+                    token = auth_header[7:]
+
+            if not token and scope["type"] == "websocket":
+                query_string = scope.get("query_string", b"").decode("utf-8")
+                from urllib.parse import parse_qs
+                params = parse_qs(query_string)
+                if "token" in params:
+                    token = params["token"][0]
+
+            username = verify_jwt_token(token) if token else None
+            if not username:
+                if scope["type"] == "websocket":
+                    await self._send_http_error(send, 403, "Forbidden")
+                    return
+                elif path.startswith("/api/"):
+                    await self._send_http_error(send, 401, "Unauthorized")
+                    return
+                else:
+                    await self._send_redirect(send, "/login")
+                    return
+
+        await self.app(scope, receive, send)
+
+    async def _send_http_error(self, send: Send, status_code: int, message: str) -> None:
+        await send({
+            "type": "http.response.start",
+            "status": status_code,
+            "headers": [
+                (b"content-type", b"application/json"),
+            ],
+        })
+        await send({
+            "type": "http.response.body",
+            "body": json.dumps({"detail": message}).encode("utf-8"),
+        })
+
+    async def _send_redirect(self, send: Send, location: str) -> None:
+        await send({
+            "type": "http.response.start",
+            "status": 307,
+            "headers": [
+                (b"location", location.encode("utf-8")),
+            ],
+        })
+        await send({
+            "type": "http.response.body",
+            "body": b"",
+        })
+
 
 app = FastAPI(
     title="BaitBox",
     description="A lightweight honeypot with a real-time dashboard.",
     version="2.0.0",
 )
+app.add_middleware(AuthMiddleware)
 
 # Decoy paths that emulate common attack targets
 _DECOY_PATHS = {
     "/admin",
     "/administrator",
-    "/login",
     "/phpmyadmin",
     "/wp-admin",
     "/wp-login.php",
@@ -108,9 +228,40 @@ async def _record_http_request(request: Request, event_type: str = "request") ->
     return event
 
 
+@app.get("/login", response_class=HTMLResponse)
+async def login_page() -> str:
+    return LOGIN_HTML.read_text(encoding="utf-8")
+
+
+@app.post("/login")
+async def login(username: str = Form(...), password: str = Form(...)) -> Response:
+    if await verify_user_credentials(username, password):
+        token = create_jwt_token(username)
+        response = JSONResponse({"status": "ok"})
+        response.set_cookie(
+            key="session_token",
+            value=token,
+            httponly=True,
+            samesite="lax",
+        )
+        return response
+    return JSONResponse(
+        {"detail": "Invalid username or password"},
+        status_code=401
+    )
+
+
+@app.get("/logout")
+async def logout() -> Response:
+    response = RedirectResponse(url="/login", status_code=307)
+    response.delete_cookie(key="session_token")
+    return response
+
+
 @app.get("/", response_class=HTMLResponse)
 async def dashboard() -> str:
     return INDEX_HTML.read_text(encoding="utf-8")
+
 
 
 @app.get("/api/events")

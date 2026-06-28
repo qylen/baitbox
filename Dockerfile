@@ -9,7 +9,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Expose SSH (2222), HTTP honeypot (8080), Dashboard (8000)
-EXPOSE 2222 8080 8000
+# Expose SSH (2222), Telnet (2323), Dashboard + HTTP honeypot (8000)
+EXPOSE 2222 2323 8000
+
+# Persist database across container restarts
+VOLUME ["/data"]
+ENV BAITBOX_DB=/data/baitbox.db
 
 CMD ["python", "-m", "baitbox.main"]

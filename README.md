@@ -2,176 +2,147 @@
 # 🪤 BaitBox
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Docker](https://img.shields.io/docker/pulls/baitbox/baitbox.svg)](https://hub.docker.com/r/baitbox/baitbox)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![GitHub Stars](https://img.shields.io/github/stars/yourusername/baitbox?style=social)](https://github.com/yourusername/baitbox)
+[![Tests](https://img.shields.io/badge/tests-passing-brightgreen)](#)
 
-> A lightweight, zero-config honeypot for homelabbers. Trap attackers in a fake filesystem and watch them struggle in real-time.
-
-![BaitBox Dashboard Demo](https://via.placeholder.com/1200x400/0f172a/ffffff?text=BaitBox+Real-Time+Dashboard+GIF+Here)
-*(Replace this with a GIF of your dashboard intercepting an SSH attack)*
+> **BaitBox** is a zero-config, multi-protocol honeypot for homelabbers and security researchers. Drop attackers into a stateful fake filesystem, watch them try to pivot, and get real-time alerts — all from a beautiful cyber command-center dashboard.
 
 ## 🚀 Features
 
-- **🛡️ Multi-Protocol:** Simulates SSH and HTTP endpoints.
-- **🎭 Stateful Fake Filesystem:** SSH attackers are dropped into a virtual Python-powered filesystem. They can type `cd`, `ls -la`, `pwd`, `touch`, `mkdir`, `rm`, `cp`, `mv`, `stat`, `head`, `tail`, `echo` (with file redirection `>` and `>>`), `wget`/`curl` to fake-download scripts, `ping`, and even execute simple shell scripts!
-- **📊 Interactive Dashboard:** A beautiful, dark-mode command center showing real-time logs, CartoDB-powered GeoIP maps, Chart.js graphs, attacker statistics, top credential guesses, and recent SSH commands.
-- **🔌 Active Intruder Controller:** Monitor current SSH connections live and terminate/boot off attackers instantly from the web interface.
-- **🔔 Webhook Notifications:** Receive instant alert updates directly to Discord or Slack when logins are attempted, commands are run, or decoy paths are hit.
-- **🐳 Zero-Config Docker:** Spin up a full honeypot + dashboard in 5 seconds. No external databases needed.
+- **🛡️ Multi-Protocol Honeypot:** Simultaneously traps SSH, HTTP, and Telnet attackers.
+- **🎭 Stateful Fake Filesystem (VFS):** SSH attackers are dropped into a convincing virtual Linux machine with realistic files: `~/.bash_history`, `~/.bashrc` (with fake DB passwords), `~/.ssh/authorized_keys`, `/var/www/html/.env`, `/etc/shadow`, `/etc/crontab`, Nginx config, MySQL dumps, auth logs, and more.
+- **💻 50+ Fake Shell Commands:** Full interactive shell with `ls -la` (hidden files), `cd ~`, `cat`, `grep`, `find`, `ps aux`, `netstat`, `ifconfig`/`ip`, `who`, `last`, `df`, `free`, `top`, `crontab -l`, `python3 -c`, `mysql`, `git log`, `systemctl status`, `nmap`, `wget`/`curl`, `ping`, `vi`/`nano`, `echo` with redirection, shell script execution, history navigation (↑ arrow), Ctrl+C, Ctrl+D.
+- **📡 Telnet Honeypot:** An asyncio-powered Telnet server on port 2323 that captures credentials and commands.
+- **📊 Premium Dashboard:** A stunning, pure-vanilla-CSS cyber command center with:
+  - **Live GeoIP Attack Map** (server-side resolution, cached, no API key needed)
+  - **Threat Score Indicators** (🔴 HIGH / 🟡 MED / 🟢 LOW per attacker)
+  - **24-Hour Event Timeline** chart
+  - **Protocol Split** donut chart
+  - **Real-time event stream** with pause/resume
+  - **IP Block/Unblock** controls — one click blocks an IP and terminates their sessions
+  - **Top Offending IPs, Top Passwords, Top HTTP Paths** leaderboards
+  - **Active Intruder Controller** — live session view with BOOT/BLOCK/MAP buttons
+- **🔔 Webhook Notifications:** Discord and Slack alerts for auth attempts, commands, and decoy hits.
+- **🚫 IP Rate Limiting & Block List:** Automatic connection tracking; manually block IPs from the dashboard.
+- **🐳 Zero-Config Docker:** Full honeypot + dashboard in 5 seconds.
 
 ## ⚡ Quickstart
 
-The fastest way to deploy BaitBox is via Docker. 
+### Docker (Recommended)
 
 ```bash
 docker run -d \
   --name baitbox \
   -p 2222:2222 \
+  -p 2323:2323 \
   -p 8000:8000 \
-  yourusername/baitbox:latest
+  ghcr.io/qylen/baitbox:latest
 ```
 
-**You're live!** 
-- **SSH Honeypot:** Exposed on port `2222`
-- **Dashboard + HTTP Honeypot:** Open your browser to `http://localhost:8000`
+Open **http://localhost:8000** to see the dashboard.
 
-Watch the dashboard light up as bots start knocking on your door within minutes.
+### Python
 
+```bash
+git clone https://github.com/qylen/baitbox.git
+cd baitbox
+pip install -r requirements.txt
+python -m baitbox.main
+```
 
-### How to Run and Test It
+## 🧪 Test It
 
-1. **Install dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
+**SSH Honeypot:**
+```bash
+ssh root@localhost -p 2222
+# Enter any password (e.g. admin123)
+# Try: ls -la, cat /root/secrets.txt, cat /var/www/html/.env, grep DB_PASS /root/.bashrc
+```
 
-2. **Run BaitBox:**
-   ```bash
-   python -m baitbox.main
-   ```
+**Telnet Honeypot:**
+```bash
+telnet localhost 2323
+# Enter any username/password
+```
 
-3. **Test the HTTP Honeypot:**
-   Open your browser to `http://localhost:8000`. You will see the Dashboard.
-   Open a new tab to `http://localhost:8000/wp-admin`. You will see the fake admin login page. Go back to your dashboard tab, and you will see your IP logged trying to access `/wp-admin`.
+**HTTP Decoys:**
+```bash
+curl http://localhost:8000/wp-admin
+curl http://localhost:8000/.env
+curl http://localhost:8000/.git/config
+```
 
-4. **Test the SSH Honeypot:**
-   Open a terminal and SSH into the honeypot:
-   ```bash
-   ssh root@localhost -p 2222
-   ```
-   - It will ask for a password. Type anything (e.g., `admin123`).
-   - You will drop into a fake shell. Type `ls`, `whoami`, or `cat secrets.txt`.
-   - Open the dashboard in your browser, and watch your commands appear in real-time on the web UI.
+Then open **http://localhost:8000** and watch your actions appear on the dashboard in real-time.
 
-## 🖥️ Local Development
+## ⚙️ Configuration
 
-Want to contribute or run it without Docker? 
-
-1. Clone the repo:
-   ```bash
-   git clone https://github.com/qylen/baitbox.git
-   cd baitbox
-   ```
-2. Install dependencies (using `uv` or `pip`):
-   ```bash
-   pip install -r requirements.txt
-   ```
-3. Run BaitBox:
-   ```bash
-   python -m baitbox.main
-   ```
-
-## ⚙️ How It Works
-
-### The SSH Trap
-When an attacker connects to port `2222`, BaitBox accepts any username/password combination using `paramiko`. 
-Instead of rejecting them, it drops them into a fake Python-based shell. 
-- If they type `ls`, they see fake web files.
-- If they type `cat /etc/passwd`, they see fake users.
-- If they type `wget malicious.sh`, BaitBox logs the URL but fakes a successful download.
-**Every single command is streamed to your dashboard.**
-
-### The HTTP Trap
-BaitBox serves fake login pages for common paths (`/wp-admin`, `/admin`, `/phpmyadmin`, and more). Requests and submitted payloads are logged to SQLite and streamed to the dashboard over WebSockets.
-
-### Configuration
-BaitBox can be configured with environment variables:
+All settings are via environment variables:
 
 | Variable | Default | Description |
-| --- | --- | --- |
-| `BAITBOX_SSH_HOST` | `0.0.0.0` | SSH honeypot bind address. |
-| `BAITBOX_SSH_PORT` | `2222` | SSH honeypot port. |
-| `BAITBOX_DASHBOARD_HOST` | `0.0.0.0` | Dashboard/HTTP honeypot bind address. |
-| `BAITBOX_DASHBOARD_PORT` | `8000` | Dashboard/HTTP honeypot port. |
-| `BAITBOX_DB` | `baitbox.db` | SQLite database path. |
-| `BAITBOX_MAX_EVENTS` | `100` | Maximum dashboard events retained client-side. |
-| `BAITBOX_SSH_HOST_KEY` | _(empty)_ | Optional RSA host-key path. If the file does not exist, BaitBox creates it so SSH clients see a stable host key between restarts. |
-| `BAITBOX_SSH_BACKLOG` | `100` | TCP listen backlog for the SSH honeypot. |
-| `BAITBOX_SSH_CHANNEL_TIMEOUT` | `20` | Seconds to wait for an SSH shell or exec request before closing an idle channel. |
-| `BAITBOX_WEBHOOK_URL` | _(empty)_ | URL to send Discord, Slack, or generic HTTP alerts. |
-| `BAITBOX_WEBHOOK_TYPE` | `discord` | Type of webhook notification payload to construct (`discord`, `slack`, or `generic`). |
+|---|---|---|
+| `BAITBOX_SSH_HOST` | `0.0.0.0` | SSH honeypot bind address |
+| `BAITBOX_SSH_PORT` | `2222` | SSH honeypot port |
+| `BAITBOX_DASHBOARD_HOST` | `0.0.0.0` | Dashboard bind address |
+| `BAITBOX_DASHBOARD_PORT` | `8000` | Dashboard port |
+| `BAITBOX_TELNET_PORT` | `2323` | Telnet honeypot port |
+| `BAITBOX_TELNET_ENABLED` | `1` | Set to `0` to disable Telnet |
+| `BAITBOX_DB` | `baitbox.db` | SQLite database path |
+| `BAITBOX_MAX_EVENTS` | `100` | Max events kept client-side |
+| `BAITBOX_SSH_HOST_KEY` | _(empty)_ | Path to RSA host key (auto-generated if empty) |
+| `BAITBOX_SSH_BACKLOG` | `100` | TCP listen backlog |
+| `BAITBOX_SSH_CHANNEL_TIMEOUT` | `20` | SSH channel idle timeout (seconds) |
+| `BAITBOX_SSH_HOSTNAME` | `web-prod-01` | Fake hostname shown in SSH banner/prompt |
+| `BAITBOX_GEOIP_ENABLED` | `1` | Set to `0` to disable server-side GeoIP lookups |
+| `BAITBOX_WEBHOOK_URL` | _(empty)_ | Discord/Slack webhook URL |
+| `BAITBOX_WEBHOOK_TYPE` | `discord` | Webhook format: `discord`, `slack`, or `generic` |
 
-
-### API Endpoints
-
-BaitBox also exposes JSON endpoints for automation and external dashboards:
+## 🌐 API Endpoints
 
 | Endpoint | Description |
-| --- | --- |
-| `GET /api/events?limit=100` | Returns recent event telemetry, ordered oldest-to-newest. |
-| `GET /api/stats` | Returns aggregate telemetry including totals, protocol/event-type breakdowns, top IPs, top passwords, and recent SSH commands. |
-| `GET /api/sessions` | Lists active SSH intruder sessions with duration, idle time, working directory, and recent commands. |
-| `POST /api/sessions/{session_id}/kill` | Terminates an active SSH session. |
+|---|---|
+| `GET /api/events?limit=100` | Recent events (oldest-to-newest) with server-side GeoIP enrichment |
+| `GET /api/stats` | Aggregate stats: totals, protocol splits, top IPs, passwords, HTTP paths, hourly timeline, blocked IPs |
+| `GET /api/sessions` | Active SSH sessions with GeoIP data |
+| `POST /api/sessions/{id}/kill` | Terminate an SSH session |
+| `POST /api/block/{ip}` | Block an IP and terminate all its sessions |
+| `POST /api/unblock/{ip}` | Unblock an IP |
+| `GET /api/geoip/{ip}` | Server-side GeoIP lookup with threat scoring (cached 1h) |
+| `WS /ws/feed` | Real-time event WebSocket feed with GeoIP enrichment |
 
-## 📸 Screenshots
+## 🏗️ Project Structure
 
-| Live Attack Feed | Attacker Geography |
-| :---: | :---: |
-| ![Feed](https://via.placeholder.com/600x300/1e293b/e2e8f0?text=Live+Terminal+Feed) | ![Map](https://via.placeholder.com/600x300/1e293b/e2e8f0?text=GeoIP+Attack+Map) |
-
-## 🤝 Contributing
-
-Contributions are what make the open-source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
-
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-*Ideas for contributions: RDP honeypot, Redis honeypot, Discord webhook integration for instant alerts.*
-Project Structure
 ```text
 baitbox/
 ├── baitbox/
-│   ├── __init__.py
-│   ├── main.py
-│   ├── db.py
-│   ├── pubsub.py
+│   ├── config.py          # Settings from environment variables
+│   ├── db.py              # SQLite persistence
+│   ├── geoip.py           # Server-side GeoIP with threat scoring
+│   ├── main.py            # Entry point (starts all servers)
+│   ├── pubsub.py          # Asyncio pub/sub for WebSocket broadcasting
+│   ├── ratelimit.py       # IP rate limiting and block list
+│   ├── sessions.py        # Active SSH session manager
+│   ├── vfs.py             # Virtual filesystem for SSH honeypot
+│   ├── webhooks.py        # Discord/Slack/generic webhook notifications
 │   ├── servers/
-│   │   ├── __init__.py
-│   │   ├── ssh_server.py
-│   │   └── http_server.py
+│   │   ├── http_server.py # FastAPI dashboard + HTTP honeypot
+│   │   ├── ssh_server.py  # Paramiko SSH honeypot (50+ commands)
+│   │   └── telnet_server.py # Asyncio Telnet honeypot
 │   └── static/
-│       └── index.html
-├── Dockerfile
+│       └── index.html     # Premium single-page dashboard
 ├── tests/
+│   ├── test_db.py
+│   ├── test_ratelimit.py  # NEW: Rate limiter tests
+│   ├── test_ssh_server.py # 40+ SSH command tests
+│   └── test_vfs.py        # 50+ VFS tests
+├── Dockerfile
 ├── requirements.txt
 └── README.md
 ```
+
 ## ⚠️ Disclaimer
 
-BaitBox is intended for educational and research purposes only. By deploying a honeypot, you are intentionally inviting malicious traffic to your network. Ensure you are running this on an isolated machine or behind a strict firewall. The maintainers are not responsible for any damage to your systems.
+BaitBox is intended for **educational and research purposes only**. Deploy only on isolated machines or behind a strict firewall. The maintainers are not responsible for any misuse or damage. Ensure you comply with all applicable laws in your jurisdiction.
 
 ## 📄 License
 
-Distributed under the MIT License. See `LICENSE` for more information.
-```
-
----
-
-### Post-Launch Strategy for GitHub Trending
-1. **Record a 30-second Loom/GIF:** Record your terminal as an attacker SSHes in, types `ls`, and then switch tabs to show the dashboard lighting up with their commands instantly. Put this at the top of the README.
-2. **Seed the Honeypot:** Before launching, run BaitBox on a public cloud VM (DigitalOcean/AWS) for 24 hours. Take screenshots of the dashboard *already full of attacks* so the repo looks active and proven.
-3. **Launch Day:** Post to `r/selfhosted`, `r/cybersecurity`, `r/homelab`, and Hacker News. Title: *"Show HN: BaitBox – A zero-config Python honeypot with a real-time dashboard"*.
+MIT — see `LICENSE` for details.

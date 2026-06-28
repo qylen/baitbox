@@ -21,6 +21,13 @@ class Settings:
     ssh_channel_timeout: int = int(os.getenv("BAITBOX_SSH_CHANNEL_TIMEOUT", "20"))
     webhook_url: str = os.getenv("BAITBOX_WEBHOOK_URL", "")
     webhook_type: str = os.getenv("BAITBOX_WEBHOOK_TYPE", "discord")
+    # Server-side GeoIP: set to "0" to disable (reduces external lookups)
+    geoip_enabled: bool = os.getenv("BAITBOX_GEOIP_ENABLED", "1") not in ("0", "false", "no")
+    # Telnet honeypot
+    telnet_port: int = int(os.getenv("BAITBOX_TELNET_PORT", "2323"))
+    telnet_enabled: bool = os.getenv("BAITBOX_TELNET_ENABLED", "1") not in ("0", "false", "no")
+    # Banner customisation
+    ssh_banner_hostname: str = os.getenv("BAITBOX_SSH_HOSTNAME", "web-prod-01")
 
 
 settings = Settings()

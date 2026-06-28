@@ -30,6 +30,16 @@ async def init_db() -> None:
         await db.execute("CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_events_src_ip ON events(src_ip)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_events_protocol ON events(protocol)")
+        # GeoIP cache table
+        await db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS geoip_cache (
+                ip TEXT PRIMARY KEY,
+                data TEXT NOT NULL,
+                expires_at REAL NOT NULL
+            )
+            """
+        )
         await db.commit()
 
 
@@ -53,7 +63,7 @@ async def log_event(src_ip: str, protocol: str, event_type: str, payload: dict[s
         "event_type": event_type,
         "payload": payload,
     }
-    
+
     try:
         from .webhooks import send_webhook_notification
         send_webhook_notification(event)
@@ -100,7 +110,7 @@ async def get_stats() -> dict[str, Any]:
             FROM events
             WHERE protocol = 'SSH' AND event_type = 'command'
             ORDER BY id DESC
-            LIMIT 10
+            LIMIT 20
             """
         )).fetchall()
         top_passwords = await (await db.execute(
@@ -113,6 +123,37 @@ async def get_stats() -> dict[str, Any]:
             LIMIT 10
             """
         )).fetchall()
+        top_usernames = await (await db.execute(
+            """
+            SELECT json_extract(payload, '$.username') AS username, COUNT(*) AS count
+            FROM events
+            WHERE event_type = 'auth_attempt' AND json_extract(payload, '$.username') IS NOT NULL
+            GROUP BY username
+            ORDER BY count DESC
+            LIMIT 10
+            """
+        )).fetchall()
+        # Events per hour over last 24h for timeline chart
+        hourly = await (await db.execute(
+            """
+            SELECT strftime('%Y-%m-%dT%H:00:00', timestamp) AS hour, COUNT(*) AS count
+            FROM events
+            WHERE timestamp >= datetime('now', '-24 hours')
+            GROUP BY hour
+            ORDER BY hour
+            """
+        )).fetchall()
+        # Top HTTP paths probed
+        top_paths = await (await db.execute(
+            """
+            SELECT json_extract(payload, '$.path') AS path, COUNT(*) AS count
+            FROM events
+            WHERE protocol = 'HTTP'
+            GROUP BY path
+            ORDER BY count DESC
+            LIMIT 10
+            """
+        )).fetchall()
 
     return {
         "total_events": total,
@@ -120,5 +161,8 @@ async def get_stats() -> dict[str, Any]:
         "by_event_type": [dict(row) for row in by_event_type],
         "top_ips": [dict(row) for row in top_ips],
         "top_passwords": [dict(row) for row in top_passwords],
+        "top_usernames": [dict(row) for row in top_usernames],
         "recent_commands": [dict(row) for row in recent_commands],
+        "hourly_events": [dict(row) for row in hourly],
+        "top_http_paths": [dict(row) for row in top_paths],
     }

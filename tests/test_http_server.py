@@ -75,3 +75,21 @@ def test_ip_validation_normalizes_ipv4_and_rejects_bad_values():
         assert "Invalid IP address" in str(exc)
     else:
         raise AssertionError("invalid IP was accepted")
+
+
+def test_client_ip_ignores_malformed_forwarded_for_header():
+    from baitbox.servers.http_server import _client_ip
+
+    class BadForwardedRequest(FakeRequest):
+        headers = {"x-forwarded-for": "not-an-ip, 203.0.113.10"}
+
+    assert _client_ip(BadForwardedRequest()) == "198.51.100.99"
+
+
+def test_auth_route_matching_leaves_api_scanner_decoys_public():
+    from baitbox.servers.http_server import _is_dashboard_route
+
+    assert _is_dashboard_route("/api/events")
+    assert _is_dashboard_route("/api/block/203.0.113.42")
+    assert not _is_dashboard_route("/api/v1/users")
+    assert not _is_dashboard_route("/api/.env")

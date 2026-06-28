@@ -79,11 +79,7 @@ class AuthMiddleware:
 
         path = scope.get("path", "")
 
-        is_dashboard_route = (
-            path == "/"
-            or path.startswith("/api/")
-            or path == "/ws/feed"
-        )
+        is_dashboard_route = _is_dashboard_route(path)
         is_public = path in ("/login", "/logout", "/api/auth/login", "/healthz", "/readyz")
 
         if is_dashboard_route and not is_public:
@@ -184,6 +180,35 @@ app = FastAPI(
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(AuthMiddleware)
 
+_DASHBOARD_API_EXACT_PATHS = {
+    "/api/events",
+    "/api/events/export",
+    "/api/stats",
+    "/api/sessions",
+}
+
+_DASHBOARD_API_PREFIXES = (
+    "/api/sessions/",
+    "/api/block/",
+    "/api/unblock/",
+    "/api/threat/",
+    "/api/geoip/",
+)
+
+
+def _is_dashboard_route(path: str) -> bool:
+    """Return True only for real dashboard routes that require authentication.
+
+    BaitBox intentionally uses catch-all HTTP honeypot routes. Keeping the API
+    auth matcher precise prevents common scanner targets such as
+    ``/api/v1/users`` from being hidden behind dashboard authentication.
+    """
+    if path in ("/", "/ws/feed"):
+        return True
+    if path in _DASHBOARD_API_EXACT_PATHS:
+        return True
+    return any(path.startswith(prefix) for prefix in _DASHBOARD_API_PREFIXES)
+
 # Decoy paths that emulate common attack targets
 _DECOY_PATHS = {
     "/admin",
@@ -254,7 +279,11 @@ def _client_ip(request: Request) -> str:
     forwarded_for = request.headers.get("x-forwarded-for")
     if forwarded_for:
         # Only trust the left-most value; proxies append subsequent hops.
-        return forwarded_for.split(",", 1)[0].strip()
+        candidate = forwarded_for.split(",", 1)[0].strip()
+        try:
+            return str(ip_address(candidate))
+        except ValueError:
+            pass
     return request.client.host if request.client else "unknown"
 
 

@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import json
+from http.cookies import SimpleCookie
 from urllib.parse import parse_qs
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Form, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 from ..db import get_recent_events, get_stats, log_event
@@ -24,7 +25,6 @@ from ..ratelimit import (
 import jwt
 import datetime as dt
 import bcrypt
-from fastapi import Form
 from fastapi.responses import RedirectResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 from ..config import settings
@@ -35,15 +35,17 @@ INDEX_HTML = STATIC_DIR / "index.html"
 LOGIN_HTML = STATIC_DIR / "login.html"
 
 
-def create_jwt_token(username: str) -> str:
+def create_jwt_token(username: str, expires_delta: dt.timedelta | None = None) -> str:
+    """Create a signed dashboard session token for a username."""
     payload = {
         "sub": username,
-        "exp": dt.datetime.now(dt.UTC) + dt.timedelta(hours=24),
+        "exp": dt.datetime.now(dt.UTC) + (expires_delta or dt.timedelta(hours=24)),
     }
     return jwt.encode(payload, settings.jwt_secret, algorithm="HS256")
 
 
 def verify_jwt_token(token: str) -> str | None:
+    """Return the authenticated username for a valid token, otherwise ``None``."""
     try:
         payload = jwt.decode(token, settings.jwt_secret, algorithms=["HS256"])
         return payload.get("sub")
@@ -52,6 +54,7 @@ def verify_jwt_token(token: str) -> str | None:
 
 
 async def verify_user_credentials(username: str, password: str) -> bool:
+    """Validate dashboard credentials against the configured bcrypt hash."""
     password_hash = await get_user_password_hash(username)
     if not password_hash:
         return False
@@ -83,13 +86,9 @@ class AuthMiddleware:
             headers = dict(scope.get("headers", []))
             cookie_header = headers.get(b"cookie", b"").decode("utf-8")
 
-            cookies = {}
-            for cookie in cookie_header.split(";"):
-                if "=" in cookie:
-                    k, v = cookie.strip().split("=", 1)
-                    cookies[k] = v
-
-            token = cookies.get("session_token")
+            cookie = SimpleCookie()
+            cookie.load(cookie_header)
+            token = cookie["session_token"].value if "session_token" in cookie else None
 
             if not token:
                 auth_header = headers.get(b"authorization", b"").decode("utf-8")
@@ -234,6 +233,7 @@ async def login_page() -> str:
 
 
 @app.post("/login")
+@app.post("/api/auth/login")
 async def login(username: str = Form(...), password: str = Form(...)) -> Response:
     if await verify_user_credentials(username, password):
         token = create_jwt_token(username)
@@ -243,6 +243,7 @@ async def login(username: str = Form(...), password: str = Form(...)) -> Respons
             value=token,
             httponly=True,
             samesite="lax",
+            max_age=24 * 60 * 60,
         )
         return response
     return JSONResponse(
@@ -348,6 +349,14 @@ async def api_block_ip(ip: str) -> dict[str, Any]:
 async def api_unblock_ip(ip: str) -> dict[str, Any]:
     unblock_ip(ip)
     return {"status": "ok", "message": f"IP {ip} unblocked."}
+
+
+@app.get("/api/threat/{ip}")
+async def api_threat(ip: str) -> dict[str, Any]:
+    """Return the current in-memory anomaly score for an IP address."""
+    from ..anomaly import get_threat_score
+
+    return get_threat_score(ip)
 
 
 @app.get("/api/geoip/{ip}")

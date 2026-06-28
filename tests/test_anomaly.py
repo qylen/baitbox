@@ -83,6 +83,18 @@ class AnomalyTests(unittest.TestCase):
         self.assertEqual(res["threat_level"], "MEDIUM")
         self.assertEqual(res["threat_score"], 55)
 
+    def test_sensitive_ssh_key_access(self):
+        ip = "192.0.2.9"
+        analyze_event({
+            "src_ip": ip,
+            "event_type": "command",
+            "payload": {"command": "cat ~/.ssh/authorized_keys"},
+            "protocol": "SSH"
+        })
+        res = get_threat_score(ip)
+        self.assertEqual(res["threat_score"], 20)
+        self.assertIn("Suspicious file/directory access patterns (e.g. /etc/passwd, .env)", res["reasons"])
+
     def test_rapid_command_iteration(self):
         ip = "192.0.2.7"
         # Execute 5 commands rapidly

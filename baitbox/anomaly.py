@@ -110,7 +110,7 @@ def analyze_event(event: Dict[str, Any]) -> Dict[str, Any]:
         metrics["commands"].append(now)
 
         # Match high risk commands
-        if re.search(r"\b(wget|curl|chmod\s+(?:777|\+x)|useradd|groupadd|tftp|netcat|nc|iptables|systemctl|crontab|rm\s+-rf)\b", command):
+        if re.search(r"\b(wget|curl|chmod\s+(?:777|\+x)|chown|useradd|groupadd|tftp|netcat|ncat|nc|iptables|systemctl|crontab|rm\s+-rf)\b", command):
             metrics["high_risk_detected"] = True
 
         # Match privilege escalation commands
@@ -118,12 +118,12 @@ def analyze_event(event: Dict[str, Any]) -> Dict[str, Any]:
             metrics["priv_esc_detected"] = True
 
         # Match suspicious file access patterns
-        if re.search(r"(/etc/passwd|/etc/shadow|/etc/hosts|\.env|\.git|/proc/|/dev/null)", command):
+        if re.search(r"(/etc/passwd|/etc/shadow|/etc/hosts|authorized_keys|id_rsa|\.env|\.git|/proc/|/dev/null)", command):
             metrics["file_access_detected"] = True
 
     elif protocol == "HTTP":
         path = payload.get("path", "")
-        if re.search(r"(\.env|\.git|/admin|/wp-admin|/wp-login|/etc/passwd)", path):
+        if re.search(r"(\.env|\.git|/admin|/wp-admin|/wp-login|/etc/passwd|/etc/shadow)", path):
             metrics["file_access_detected"] = True
 
     # Calculate and return updated threat stats

@@ -100,7 +100,7 @@ The dashboard requires authentication. Default credentials:
 | `BAITBOX_DASHBOARD_PASSWORD` | `admin` | Dashboard login password |
 | `BAITBOX_JWT_SECRET` | _(auto)_ | JWT signing secret — **change this in production** |
 
-All `/api/*` endpoints and the `/ws/feed` WebSocket require a valid JWT session cookie. Unauthenticated requests return **401 Unauthorized**.
+All `/api/*` endpoints and the `/ws/feed` WebSocket require a valid JWT session cookie or bearer token. Unauthenticated API requests return **401 Unauthorized**, unauthenticated WebSocket handshakes are rejected with **403 Forbidden**, and unauthenticated dashboard visits are redirected to `/login`.
 
 ## ⚙️ Configuration
 
@@ -137,12 +137,12 @@ BaitBox includes a real-time anomaly detection engine that scores each attacker 
 |---|---|---|
 | Multiple failed logins | +15 | ≥5 auth attempts from a single IP |
 | Rapid auth attempts | +30 | ≥3 auth attempts within 10 seconds |
-| High-risk commands | +30 | `wget`, `curl`, `chmod`, `chown`, `nc`, `ncat`, etc. |
+| High-risk commands | +30 | `wget`, `curl`, `chmod`, `chown`, `nc`, `ncat`, `useradd`, `systemctl`, `crontab`, destructive deletes, etc. |
 | Privilege escalation | +25 | `root` login or `sudo`/`su` commands |
-| Sensitive file access | +20 | Access to `/etc/shadow`, `/etc/passwd`, `.env`, SSH keys |
+| Sensitive file access | +20 | Access to `/etc/shadow`, `/etc/passwd`, `.env`, `.git`, SSH keys, `/proc`, and similar discovery targets |
 | Rapid command execution | +35 | ≥5 commands within 10 seconds |
 
-**Threat levels:** LOW (0–29) · MEDIUM (30–59) · HIGH (60–89) · CRITICAL (90–100)
+**Threat levels:** 🟢 LOW (0–29) · 🟡 MEDIUM (30–69) · 🔴 CRITICAL (70–100)
 
 Scores are displayed per-session on the dashboard and included in webhook notifications.
 
@@ -151,6 +151,7 @@ Scores are displayed per-session on the dashboard and included in webhook notifi
 | Endpoint | Auth | Description |
 |---|---|---|
 | `POST /login` | No | Authenticate and receive JWT session cookie |
+| `POST /api/auth/login` | No | API alias for dashboard authentication |
 | `POST /logout` | Yes | Clear session cookie |
 | `GET /api/events?limit=100` | Yes | Recent events (oldest-to-newest) with GeoIP enrichment |
 | `GET /api/stats` | Yes | Aggregate stats: totals, protocol splits, top IPs, passwords, HTTP paths, hourly timeline, blocked IPs |

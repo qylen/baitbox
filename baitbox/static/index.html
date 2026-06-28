@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BaitBox | Honeypot Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+</head>
+<body class="bg-slate-900 text-slate-200 font-mono">
+
+    <div x-data="baitbox()" x-init="init()" class="p-8">
+        <header class="mb-8 border-b border-slate-700 pb-4">
+            <h1 class="text-3xl font-bold text-emerald-400">🪤 BaitBox Dashboard</h1>
+            <p class="text-slate-400 text-sm">Real-time attacker activity feed</p>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Left Column: Live Feed -->
+            <div class="lg:col-span-2 bg-slate-800 rounded-lg p-4 shadow-lg border border-slate-700">
+                <h2 class="text-xl font-bold mb-4 text-slate-300">Live Attack Feed</h2>
+                <div class="bg-slate-900 p-4 rounded h-[600px] overflow-y-auto text-sm">
+                    <template x-for="event in events" :key="event.id || event.timestamp">
+                        <div class="mb-2 pb-2 border-b border-slate-800">
+                            <div class="flex items-center gap-2">
+                                <span x-text="formatTime(event.timestamp)" class="text-slate-500 text-xs"></span>
+                                <span class="px-2 py-0.5 text-xs rounded" 
+                                      :class="event.protocol === 'SSH' ? 'bg-purple-900 text-purple-300' : 'bg-blue-900 text-blue-300'"
+                                      x-text="event.protocol"></span>
+                                <span class="font-bold text-red-400" x-text="event.src_ip"></span>
+                                <span class="text-slate-400 text-xs" x-text="event.event_type"></span>
+                            </div>
+                            <div class="mt-1 text-slate-400 pl-4 break-all" x-text="formatPayload(event)"></div>
+                        </div>
+                    </template>
+                    <div x-show="events.length === 0" class="text-slate-500 text-center mt-20">
+                        Waiting for attackers to take the bait...
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column: Stats -->
+            <div class="space-y-6">
+                <div class="bg-slate-800 rounded-lg p-4 shadow-lg border border-slate-700">
+                    <h2 class="text-xl font-bold mb-4 text-slate-300">Top Attacker IPs</h2>
+                    <ul class="space-y-2">
+                        <template x-for="(ip, index) in topIps" :key="index">
+                            <li class="flex justify-between text-sm">
+                                <span class="text-red-400" x-text="ip.ip"></span>
+                                <span class="text-slate-400" x-text="ip.count + ' hits'"></span>
+                            </li>
+                        </template>
+                    </ul>
+                </div>
+                
+                <div class="bg-slate-800 rounded-lg p-4 shadow-lg border border-slate-700">
+                    <h2 class="text-xl font-bold mb-4 text-slate-300">Top SSH Passwords</h2>
+                    <ul class="space-y-2">
+                        <template x-for="(pwd, index) in topPasswords" :key="index">
+                            <li class="flex justify-between text-sm">
+                                <span class="text-yellow-400" x-text="pwd.password"></span>
+                                <span class="text-slate-400" x-text="pwd.count + ' tries'"></span>
+                            </li>
+                        </template>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function baitbox() {
+            return {
+                events: [],
+                topIps: [],
+                topPasswords: [],
+                ws: null,
+
+                init() {
+                    // Fetch initial history
+                    fetch('/api/events').then(r => r.json()).then(data => {
+                        this.events = data;
+                        this.calculateStats();
+                    });
+
+                    // Connect WebSocket
+                    this.ws = new WebSocket(`ws://${window.location.host}/ws/feed`);
+                    this.ws.onmessage = (message) => {
+                        const event = JSON.parse(message.data);
+                        this.events.push(event);
+                        if (this.events.length > 100) this.events.shift();
+                        this.calculateStats();
+                    };
+                },
+
+                calculateStats() {
+                    // Top IPs
+                    const ipCounts = this.events.reduce((acc, e) => {
+                        acc[e.src_ip] = (acc[e.src_ip] || 0) + 1;
+                        return acc;
+                    }, {});
+                    this.topIps = Object.entries(ipCounts).map(([ip, count]) => ({ip, count})).sort((a,b) => b.count - a.count).slice(0, 5);
+
+                    // Top Passwords
+                    const pwdCounts = {};
+                    this.events.forEach(e => {
+                        if (e.event_type === 'auth_attempt' && e.payload && e.payload.password) {
+                            pwdCounts[e.payload.password] = (pwdCounts[e.payload.password] || 0) + 1;
+                        }
+                    });
+                    this.topPasswords = Object.entries(pwdCounts).map(([password, count]) => ({password, count})).sort((a,b) => b.count - a.count).slice(0, 5);
+                },
+
+                formatTime(ts) {
+                    if (!ts) return '';
+                    return new Date(ts).toLocaleTimeString();
+                },
+
+                formatPayload(event) {
+                    if (event.event_type === 'auth_attempt') {
+                        return `User: ${event.payload.username} | Pass: ${event.payload.password}`;
+                    } else if (event.event_type === 'command') {
+                        return `$ ${event.payload.command}`;
+                    } else if (event.event_type === 'request') {
+                        return `${event.payload.method} ${event.payload.path}`;
+                    }
+                    return JSON.stringify(event.payload);
+                }
+            }
+        }
+    </script>
+</body>
+</html>

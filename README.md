@@ -66,6 +66,8 @@ pip install -r requirements.txt
 python -m baitbox.main
 ```
 
+(login: admin / admin)
+
 ## 🧪 Test It
 
 **SSH Honeypot:**

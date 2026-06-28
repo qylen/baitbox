@@ -45,7 +45,7 @@ async def log_event(src_ip: str, protocol: str, event_type: str, payload: dict[s
         await db.commit()
         event_id = cursor.lastrowid
 
-    return {
+    event = {
         "id": event_id,
         "timestamp": timestamp,
         "src_ip": src_ip,
@@ -53,6 +53,14 @@ async def log_event(src_ip: str, protocol: str, event_type: str, payload: dict[s
         "event_type": event_type,
         "payload": payload,
     }
+    
+    try:
+        from .webhooks import send_webhook_notification
+        send_webhook_notification(event)
+    except Exception:
+        pass
+
+    return event
 
 
 def _decode_row(row: aiosqlite.Row) -> dict[str, Any]:

@@ -14,8 +14,10 @@
 ## 🚀 Features
 
 - **🛡️ Multi-Protocol:** Simulates SSH and HTTP endpoints.
-- **🎭 Fake Filesystem:** Drops SSH attackers into a trap shell with a fake Linux filesystem. They think they have root, but they're going nowhere.
-- **📊 Real-time Dashboard:** A beautiful, dark-mode web UI showing live attacks, geolocation, and charts of top brute-forced passwords.
+- **🎭 Stateful Fake Filesystem:** SSH attackers are dropped into a virtual Python-powered filesystem. They can type `cd`, `ls -la`, `pwd`, `touch`, `mkdir`, `rm`, `echo` (with file redirection `>` and `>>`), `wget`/`curl` to fake-download scripts, `ping`, and even execute simple shell scripts!
+- **📊 Interactive Dashboard:** A beautiful, dark-mode command center showing real-time logs, CartoDB-powered GeoIP maps, Chart.js graphs, and attacker statistics.
+- **🔌 Active Intruder Controller:** Monitor current SSH connections live and terminate/boot off attackers instantly from the web interface.
+- **🔔 Webhook Notifications:** Receive instant alert updates directly to Discord or Slack when logins are attempted, commands are run, or decoy paths are hit.
 - **🐳 Zero-Config Docker:** Spin up a full honeypot + dashboard in 5 seconds. No external databases needed.
 
 ## ⚡ Quickstart
@@ -107,6 +109,8 @@ BaitBox can be configured with environment variables:
 | `BAITBOX_SSH_HOST_KEY` | _(empty)_ | Optional RSA host-key path. If the file does not exist, BaitBox creates it so SSH clients see a stable host key between restarts. |
 | `BAITBOX_SSH_BACKLOG` | `100` | TCP listen backlog for the SSH honeypot. |
 | `BAITBOX_SSH_CHANNEL_TIMEOUT` | `20` | Seconds to wait for an SSH shell or exec request before closing an idle channel. |
+| `BAITBOX_WEBHOOK_URL` | _(empty)_ | URL to send Discord, Slack, or generic HTTP alerts. |
+| `BAITBOX_WEBHOOK_TYPE` | `discord` | Type of webhook notification payload to construct (`discord`, `slack`, or `generic`). |
 
 ## 📸 Screenshots
 

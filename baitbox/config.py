@@ -19,6 +19,8 @@ class Settings:
     ssh_host_key: str = os.getenv("BAITBOX_SSH_HOST_KEY", "")
     ssh_backlog: int = int(os.getenv("BAITBOX_SSH_BACKLOG", "100"))
     ssh_channel_timeout: int = int(os.getenv("BAITBOX_SSH_CHANNEL_TIMEOUT", "20"))
+    webhook_url: str = os.getenv("BAITBOX_WEBHOOK_URL", "")
+    webhook_type: str = os.getenv("BAITBOX_WEBHOOK_TYPE", "discord")
 
 
 settings = Settings()

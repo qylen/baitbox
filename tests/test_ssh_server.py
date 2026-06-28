@@ -1,17 +1,57 @@
-from baitbox.servers.ssh_server import command_response
+from unittest.mock import MagicMock
+from baitbox.servers.ssh_server import execute_session_command
+from baitbox.sessions import SSHSession
+from baitbox.vfs import VirtualFilesystem
 
 
-def test_command_response_common_linux_commands():
-    response, close = command_response("whoami")
+def _setup_mock_session() -> MagicMock:
+    session = MagicMock(spec=SSHSession)
+    session.cwd = "/root"
+    session.vfs = VirtualFilesystem()
+    session.commands = []
+    
+    def add_command(cmd: str) -> None:
+        session.commands.append({"command": cmd})
+    session.add_command = add_command
+    return session
+
+
+def test_execute_session_command_common_linux_commands() -> None:
+    session = _setup_mock_session()
+
+    response, close = execute_session_command(session, "whoami")
     assert response == b"root\r\n"
     assert close is False
 
-    response, close = command_response("cat /etc/passwd")
+    response, close = execute_session_command(session, "cat /etc/passwd")
     assert b"root:x:0:0" in response
     assert close is False
 
 
-def test_command_response_exit_closes_session():
-    response, close = command_response("exit")
+def test_execute_session_command_exit_closes_session() -> None:
+    session = _setup_mock_session()
+
+    response, close = execute_session_command(session, "exit")
     assert response == b"logout\r\n"
     assert close is True
+
+
+def test_stateful_cd_and_ls() -> None:
+    session = _setup_mock_session()
+
+    # cd /var/www/html
+    response, close = execute_session_command(session, "cd /var/www/html")
+    assert response == b""
+    assert close is False
+    assert session.cwd == "/var/www/html"
+
+    # pwd
+    response, close = execute_session_command(session, "pwd")
+    assert response == b"/var/www/html\r\n"
+    assert close is False
+
+    # ls
+    response, close = execute_session_command(session, "ls")
+    assert b"index.php" in response
+    assert b"wp-config.php" in response
+    assert close is False

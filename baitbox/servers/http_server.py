@@ -89,6 +89,23 @@ async def api_stats() -> dict[str, Any]:
     return await get_stats()
 
 
+@app.get("/api/sessions")
+async def api_sessions() -> list[dict[str, Any]]:
+    from ..sessions import session_manager
+    return session_manager.list_sessions()
+
+
+@app.post("/api/sessions/{session_id}/kill")
+async def api_kill_session(session_id: str) -> dict[str, Any]:
+    from ..sessions import session_manager
+    session = session_manager.get_session(session_id)
+    if session:
+        session.close()
+        session_manager.unregister(session_id)
+        return {"status": "ok", "message": f"Session {session_id} terminated."}
+    return {"status": "error", "message": "Session not found."}
+
+
 @app.websocket("/ws/feed")
 async def websocket_feed(websocket: WebSocket) -> None:
     await websocket.accept()

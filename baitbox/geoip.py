@@ -9,6 +9,8 @@ import urllib.request
 import json
 from typing import Any
 
+from .config import settings
+
 logger = logging.getLogger("baitbox.geoip")
 
 # In-memory cache: ip -> {data, expires}
@@ -51,7 +53,10 @@ def _threat_score(data: dict[str, Any]) -> int:
 
 
 async def lookup_ip(ip: str) -> dict[str, Any]:
-    """Return GeoIP info dict for an IP. Uses cache to avoid rate-limiting."""
+    """Return GeoIP info dict for an IP. Uses memory and SQLite caches to avoid rate-limiting."""
+    if not settings.geoip_enabled:
+        return _unknown_geoip(ip, reason="disabled")
+
     if _is_private(ip):
         return {
             "ip": ip,
@@ -70,17 +75,16 @@ async def lookup_ip(ip: str) -> dict[str, Any]:
     if cached and cached["expires"] > now:
         return cached["data"]
 
-    data: dict[str, Any] = {
-        "ip": ip,
-        "city": "Unknown",
-        "country": "Unknown",
-        "countryCode": "XX",
-        "lat": 0.0,
-        "lon": 0.0,
-        "isp": "Unknown",
-        "org": "Unknown",
-        "threat_score": 0,
-    }
+    try:
+        from .db import get_geoip_cache
+        cached_data = await get_geoip_cache(ip)
+        if cached_data:
+            _CACHE[ip] = {"data": cached_data, "expires": now + _TTL}
+            return cached_data
+    except Exception as exc:
+        logger.debug("GeoIP SQLite cache read failed for %s: %s", ip, exc)
+
+    data: dict[str, Any] = _unknown_geoip(ip)
 
     try:
         # ip-api.com free tier: 45 req/min, no API key needed
@@ -103,7 +107,28 @@ async def lookup_ip(ip: str) -> dict[str, Any]:
         logger.debug("GeoIP lookup failed for %s: %s", ip, exc)
 
     _CACHE[ip] = {"data": data, "expires": now + _TTL}
+    try:
+        from .db import set_geoip_cache
+        await set_geoip_cache(ip, data, ttl=_TTL)
+    except Exception as exc:
+        logger.debug("GeoIP SQLite cache write failed for %s: %s", ip, exc)
     return data
+
+
+def _unknown_geoip(ip: str, reason: str = "unknown") -> dict[str, Any]:
+    """Return a stable placeholder shape for unavailable GeoIP data."""
+    return {
+        "ip": ip,
+        "city": "Unknown",
+        "country": "Unknown",
+        "countryCode": "XX",
+        "lat": 0.0,
+        "lon": 0.0,
+        "isp": "Unknown",
+        "org": "Unknown",
+        "threat_score": 0,
+        "reason": reason,
+    }
 
 
 def get_cached(ip: str) -> dict[str, Any] | None:

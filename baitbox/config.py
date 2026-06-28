@@ -36,6 +36,8 @@ class Settings:
     database_url: str = os.getenv("BAITBOX_DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/baitbox")
     dashboard_password: str = os.getenv("BAITBOX_DASHBOARD_PASSWORD", "admin")
     jwt_secret: str = os.getenv("BAITBOX_JWT_SECRET", "baitbox-super-secret-key-change-me")
+    session_cookie_secure: bool = os.getenv("BAITBOX_SESSION_COOKIE_SECURE", "0").lower() in ("1", "true", "yes")
+    http_max_body_bytes: int = int(os.getenv("BAITBOX_HTTP_MAX_BODY_BYTES", "65536"))
 
 
 settings = Settings()

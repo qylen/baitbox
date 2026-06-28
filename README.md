@@ -128,6 +128,8 @@ All settings are via environment variables:
 | `BAITBOX_DASHBOARD_USER` | `admin` | Dashboard login username |
 | `BAITBOX_DASHBOARD_PASSWORD` | `admin` | Dashboard login password |
 | `BAITBOX_JWT_SECRET` | _(auto)_ | JWT signing secret |
+| `BAITBOX_SESSION_COOKIE_SECURE` | `0` | Set to `1` when the dashboard is served over HTTPS |
+| `BAITBOX_HTTP_MAX_BODY_BYTES` | `65536` | Max captured HTTP request body bytes per event |
 
 ## 📈 Anomaly Detection
 
@@ -154,6 +156,7 @@ Scores are displayed per-session on the dashboard and included in webhook notifi
 | `POST /api/auth/login` | No | API alias for dashboard authentication |
 | `POST /logout` | Yes | Clear session cookie |
 | `GET /api/events?limit=100` | Yes | Recent events (oldest-to-newest) with GeoIP enrichment |
+| `GET /api/events/export?format=json|csv&limit=500` | Yes | Export recent events for offline incident review |
 | `GET /api/stats` | Yes | Aggregate stats: totals, protocol splits, top IPs, passwords, HTTP paths, hourly timeline, blocked IPs |
 | `GET /api/sessions` | Yes | Active SSH sessions with GeoIP data |
 | `POST /api/sessions/{id}/kill` | Yes | Terminate an SSH session |
@@ -162,6 +165,7 @@ Scores are displayed per-session on the dashboard and included in webhook notifi
 | `GET /api/geoip/{ip}` | Yes | Server-side GeoIP lookup with threat scoring (cached 1h) |
 | `GET /api/threat/{ip}` | Yes | Real-time anomaly/threat score for an IP |
 | `WS /ws/feed` | Yes | Real-time event WebSocket feed with GeoIP enrichment |
+| `GET /healthz` | No | Container/orchestrator liveness probe |
 
 ## 🏗️ Project Structure
 

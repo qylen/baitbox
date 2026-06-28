@@ -21,6 +21,7 @@ from ..ratelimit import (
     get_blocked_ips,
     get_connection_counts,
     is_blocked,
+    is_rate_limited,
     record_connection,
     unblock_ip,
 )
@@ -83,7 +84,7 @@ class AuthMiddleware:
             or path.startswith("/api/")
             or path == "/ws/feed"
         )
-        is_public = path in ("/login", "/logout", "/api/auth/login")
+        is_public = path in ("/login", "/logout", "/api/auth/login", "/healthz", "/readyz")
 
         if is_dashboard_route and not is_public:
             headers = dict(scope.get("headers", []))
@@ -145,11 +146,42 @@ class AuthMiddleware:
         })
 
 
+class SecurityHeadersMiddleware:
+    """Add baseline security headers to dashboard responses."""
+
+    def __init__(self, app: ASGIApp):
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        async def send_with_headers(message: dict) -> None:
+            if message["type"] == "http.response.start":
+                headers = list(message.get("headers", []))
+                extra = [
+                    (b"x-content-type-options", b"nosniff"),
+                    (b"x-frame-options", b"DENY"),
+                    (b"referrer-policy", b"strict-origin-when-cross-origin"),
+                    (b"permissions-policy", b"geolocation=(), microphone=(), camera=()"),
+                ]
+                existing = {k.lower() for k, _ in headers}
+                for key, value in extra:
+                    if key not in existing:
+                        headers.append((key, value))
+                message = {**message, "headers": headers}
+            await send(message)
+
+        await self.app(scope, receive, send_with_headers)
+
+
 app = FastAPI(
     title="BaitBox",
     description="A lightweight honeypot with a real-time dashboard.",
-    version="2.0.0",
+    version="2.1.0",
 )
+app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(AuthMiddleware)
 
 # Decoy paths that emulate common attack targets
@@ -173,7 +205,40 @@ _DECOY_PATHS = {
     "/manager/html",
     "/jmx-console",
     "/invoke",
+    # Common scanner / exploit paths
+    "/.aws/credentials",
+    "/.docker/config.json",
+    "/backup.sql",
+    "/database.sql",
+    "/db.sql",
+    "/dump.sql",
+    "/server-status",
+    "/server-info",
+    "/solr/admin",
+    "/jenkins/login",
+    "/hudson/login",
+    "/.svn/entries",
+    "/.DS_Store",
+    "/crossdomain.xml",
+    "/telescope/requests",
+    "/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php",
+    "/boaform/admin/formLogin",
+    "/HNAP1",
+    "/sdk",
 }
+
+# Prefix / suffix patterns for paths not in the exact set above
+_DECOY_PREFIXES = ("/.git/", "/.svn/", "/.aws/", "/vendor/phpunit/", "/boaform/")
+_DECOY_SUFFIXES = (".sql", ".bak", ".zip", ".tar.gz", ".env")
+
+
+def _is_probe_path(path: str) -> bool:
+    """Return True when an HTTP path looks like a scanner or exploit probe."""
+    if path in _DECOY_PATHS:
+        return True
+    if any(path.startswith(prefix) for prefix in _DECOY_PREFIXES):
+        return True
+    return any(path.endswith(suffix) for suffix in _DECOY_SUFFIXES)
 
 _FAKE_ENV = """APP_ENV=production
 APP_KEY=base64:FakeBase64AppKeyBaitboxHoneypot==
@@ -289,6 +354,26 @@ async def dashboard() -> str:
 async def healthz() -> dict[str, Any]:
     """Lightweight liveness probe for containers and orchestrators."""
     return {"status": "ok", "service": "baitbox", "version": app.version}
+
+
+@app.get("/readyz")
+async def readyz() -> dict[str, Any]:
+    """Readiness probe — verifies database connectivity."""
+    try:
+        events = await get_recent_events(limit=1)
+        return {
+            "status": "ready",
+            "service": "baitbox",
+            "version": app.version,
+            "database": settings.database_type,
+            "events_accessible": True,
+            "event_count_sample": len(events),
+        }
+    except Exception as exc:
+        return JSONResponse(
+            {"status": "not_ready", "service": "baitbox", "error": str(exc)},
+            status_code=503,
+        )
 
 
 @app.get("/api/events")
@@ -466,8 +551,11 @@ async def honeypot(request: Request, path: str) -> Response:
     if is_blocked(src_ip):
         return JSONResponse({"status": "blocked"}, status_code=403)
 
+    if is_rate_limited(src_ip, "HTTP"):
+        return JSONResponse({"status": "rate_limited"}, status_code=429)
+
     # Log every probe
-    is_probe = request.url.path in _DECOY_PATHS
+    is_probe = _is_probe_path(request.url.path)
     await _record_http_request(request, "credential_probe" if is_probe else "request")
 
     if request.method == "HEAD":
@@ -484,7 +572,7 @@ async def honeypot(request: Request, path: str) -> Response:
             media_type="text/plain", status_code=200,
         )
 
-    if request.url.path in _DECOY_PATHS:
+    if request.url.path in _DECOY_PATHS or _is_probe_path(request.url.path):
         is_post = request.method == "POST"
         return HTMLResponse(
             """

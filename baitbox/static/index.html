@@ -698,7 +698,7 @@
       <span class="logo-icon">🪤</span>
       <div class="logo-text">
         <h1>BAITBOX</h1>
-        <p>CYBER COMMAND DECOY SYSTEM v2.0</p>
+        <p>CYBER COMMAND DECOY SYSTEM v2.1</p>
       </div>
     </div>
 
@@ -809,8 +809,9 @@
               REAL-TIME ATTACK STREAM
             </div>
             <div style="display:flex;gap:8px">
-              <button class="btn" id="clear-feed-btn" onclick="clearFeed()">CLEAR</button>
-              <button class="btn" id="pause-btn" onclick="togglePause()">PAUSE</button>
+              <button class="btn btn-green" id="export-btn" onclick="exportEvents('csv')" title="Export events as CSV (E)">EXPORT</button>
+              <button class="btn" id="clear-feed-btn" onclick="clearFeed()" title="Clear feed (C)">CLEAR</button>
+              <button class="btn" id="pause-btn" onclick="togglePause()" title="Pause/resume feed (P)">PAUSE</button>
             </div>
           </div>
           <div class="terminal" id="feed"></div>
@@ -1261,6 +1262,19 @@ function togglePause() {
   paused = !paused;
   document.getElementById('pause-btn').textContent = paused ? 'RESUME' : 'PAUSE';
 }
+
+function exportEvents(format = 'csv') {
+  const url = `/api/events/export?format=${encodeURIComponent(format)}&limit=1000`;
+  window.open(url, '_blank');
+  showToast(`📥 Exporting events as ${format.toUpperCase()}…`);
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+  if (e.key === 'p' || e.key === 'P') togglePause();
+  if (e.key === 'e' || e.key === 'E') exportEvents('csv');
+  if (e.key === 'c' || e.key === 'C') clearFeed();
+});
 
 /* ═══════════════════════════════════════════════════════════════════════════
    SESSIONS RENDER

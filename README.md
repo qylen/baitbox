@@ -130,6 +130,9 @@ All settings are via environment variables:
 | `BAITBOX_JWT_SECRET` | _(auto)_ | JWT signing secret |
 | `BAITBOX_SESSION_COOKIE_SECURE` | `0` | Set to `1` when the dashboard is served over HTTPS |
 | `BAITBOX_HTTP_MAX_BODY_BYTES` | `65536` | Max captured HTTP request body bytes per event |
+| `BAITBOX_RATE_LIMIT_SSH` | `20` | Max SSH connections per IP per 60-second window |
+| `BAITBOX_RATE_LIMIT_HTTP` | `100` | Max HTTP requests per IP per 60-second window |
+| `BAITBOX_RATE_LIMIT_TELNET` | `30` | Max Telnet connections per IP per 60-second window |
 
 ## 📈 Anomaly Detection
 
@@ -166,6 +169,7 @@ Scores are displayed per-session on the dashboard and included in webhook notifi
 | `GET /api/threat/{ip}` | Yes | Real-time anomaly/threat score for an IP |
 | `WS /ws/feed` | Yes | Real-time event WebSocket feed with GeoIP enrichment |
 | `GET /healthz` | No | Container/orchestrator liveness probe |
+| `GET /readyz` | No | Readiness probe with database connectivity check |
 
 ## 🏗️ Project Structure
 

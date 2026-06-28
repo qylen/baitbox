@@ -6,16 +6,28 @@ import threading
 import time
 from typing import Any
 
+from .config import settings
+
 _LOCK = threading.RLock()
 # ip -> list of timestamps of recent connections
 _CONN_LOG: dict[str, list[float]] = {}
 # Manually blocked IPs (from dashboard action)
 _BLOCKED: set[str] = set()
 
-# Thresholds
+# Thresholds (overridable via environment variables)
 RATE_WINDOW_SECS = 60
-RATE_LIMIT_SSH = 20      # max SSH connection attempts per window
-RATE_LIMIT_HTTP = 100    # max HTTP requests per window
+RATE_LIMIT_SSH = settings.rate_limit_ssh
+RATE_LIMIT_HTTP = settings.rate_limit_http
+RATE_LIMIT_TELNET = settings.rate_limit_telnet
+
+
+def _limit_for(protocol: str) -> int:
+    """Return the per-window connection limit for a protocol."""
+    if protocol == "SSH":
+        return settings.rate_limit_ssh
+    if protocol == "Telnet":
+        return settings.rate_limit_telnet
+    return settings.rate_limit_http
 
 
 def record_connection(ip: str, protocol: str = "SSH") -> None:
@@ -40,8 +52,7 @@ def is_rate_limited(ip: str, protocol: str = "SSH") -> bool:
         now = time.time()
         cutoff = now - RATE_WINDOW_SECS
         log = [t for t in _CONN_LOG.get(ip, []) if t >= cutoff]
-        limit = RATE_LIMIT_SSH if protocol == "SSH" else RATE_LIMIT_HTTP
-        return len(log) > limit
+        return len(log) > _limit_for(protocol)
 
 
 def block_ip(ip: str) -> None:

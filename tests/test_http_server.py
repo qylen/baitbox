@@ -27,6 +27,25 @@ def test_blocked_ip_is_rejected_before_honeypot_response():
     assert response.body == b'{"status":"blocked"}'
 
 
+def test_rate_limited_ip_is_rejected_before_honeypot_response(monkeypatch):
+    from baitbox.servers import http_server
+
+    monkeypatch.setattr(http_server, "is_rate_limited", lambda src_ip, protocol: True)
+    response = asyncio.run(honeypot(FakeRequest(), "wp-admin"))
+    assert response.status_code == 429
+    assert response.body == b'{"status":"rate_limited"}'
+
+
+def test_is_probe_path_detects_common_scanner_targets():
+    from baitbox.servers.http_server import _is_probe_path
+
+    assert _is_probe_path("/wp-admin")
+    assert _is_probe_path("/backup.sql")
+    assert _is_probe_path("/.git/HEAD")
+    assert _is_probe_path("/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php")
+    assert not _is_probe_path("/favicon.ico")
+
+
 def test_payload_is_truncated_before_logging(monkeypatch):
     from baitbox.servers import http_server
 

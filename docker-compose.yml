@@ -35,6 +35,12 @@ services:
       - "2222:2222"   # SSH honeypot
       - "2323:2323"   # Telnet honeypot
       - "8000:8000"   # Dashboard + HTTP honeypot
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/readyz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     environment:
       # Switch to PostgreSQL backend
       BAITBOX_DB_TYPE: postgresql

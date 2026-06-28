@@ -9,7 +9,7 @@ from typing import Any
 from ..config import settings
 from ..db import log_event
 from ..pubsub import pubsub
-from ..ratelimit import is_blocked, record_connection
+from ..ratelimit import is_blocked, is_rate_limited, record_connection
 
 logger = logging.getLogger("baitbox.telnet")
 
@@ -64,7 +64,7 @@ class TelnetHoneypot(asyncio.Protocol):
         if peer:
             self.peer_ip, self.peer_port = peer[0], peer[1]
         record_connection(self.peer_ip, "Telnet")
-        if is_blocked(self.peer_ip):
+        if is_blocked(self.peer_ip) or is_rate_limited(self.peer_ip, "Telnet"):
             transport.close()
             return
         transport.write(_BANNER)
@@ -76,7 +76,7 @@ class TelnetHoneypot(asyncio.Protocol):
             for sep in (b"\r\n", b"\n", b"\r"):
                 if sep in self._buf:
                     line, self._buf = self._buf.split(sep, 1)
-                    asyncio.ensure_future(self._handle_line(line.decode("utf-8", errors="replace").strip()))
+                    asyncio.create_task(self._handle_line(line.decode("utf-8", errors="replace").strip()))
                     break
 
     async def _handle_line(self, line: str) -> None:
@@ -129,6 +129,9 @@ class TelnetHoneypot(asyncio.Protocol):
             "ls": b"backups.tar.gz  database.sql  deploy.sh  secrets.txt",
             "pwd": b"/root",
             "ps": b"  PID TTY TIME CMD\r\n 1021 pts/0 00:00:00 sh",
+            "cat": b"DB_PASSWORD=REDACTED_BY_BAITBOX\r\nAPI_KEY=sk_live_fake_key_abc123\r\n",
+            "wget": b"--2026-06-28 14:01:02--  http://malware.example/payload.sh\r\nConnecting to malware.example... failed: Connection timed out.\r\n",
+            "curl": b"curl: (6) Could not resolve host: attacker-c2.example\r\n",
         }
         return responses.get(cmd, f"sh: {cmd}: command not found".encode())
 

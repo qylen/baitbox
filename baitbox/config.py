@@ -38,6 +38,10 @@ class Settings:
     jwt_secret: str = os.getenv("BAITBOX_JWT_SECRET", "baitbox-super-secret-key-change-me")
     session_cookie_secure: bool = os.getenv("BAITBOX_SESSION_COOKIE_SECURE", "0").lower() in ("1", "true", "yes")
     http_max_body_bytes: int = int(os.getenv("BAITBOX_HTTP_MAX_BODY_BYTES", "65536"))
+    # Rate limiting (connections per 60-second window)
+    rate_limit_ssh: int = int(os.getenv("BAITBOX_RATE_LIMIT_SSH", "20"))
+    rate_limit_http: int = int(os.getenv("BAITBOX_RATE_LIMIT_HTTP", "100"))
+    rate_limit_telnet: int = int(os.getenv("BAITBOX_RATE_LIMIT_TELNET", "30"))
 
 
 settings = Settings()

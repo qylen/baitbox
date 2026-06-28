@@ -16,6 +16,9 @@ class Settings:
     dashboard_port: int = int(os.getenv("BAITBOX_DASHBOARD_PORT", "8000"))
     database_path: str = os.getenv("BAITBOX_DB", "baitbox.db")
     max_events: int = int(os.getenv("BAITBOX_MAX_EVENTS", "100"))
+    ssh_host_key: str = os.getenv("BAITBOX_SSH_HOST_KEY", "")
+    ssh_backlog: int = int(os.getenv("BAITBOX_SSH_BACKLOG", "100"))
+    ssh_channel_timeout: int = int(os.getenv("BAITBOX_SSH_CHANNEL_TIMEOUT", "20"))
 
 
 settings = Settings()

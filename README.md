@@ -39,6 +39,32 @@ docker run -d \
 
 Watch the dashboard light up as bots start knocking on your door within minutes.
 
+
+### How to Run and Test It
+
+1. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. **Run BaitBox:**
+   ```bash
+   python -m baitbox.main
+   ```
+
+3. **Test the HTTP Honeypot:**
+   Open your browser to `http://localhost:8000`. You will see the Dashboard.
+   Open a new tab to `http://localhost:8000/wp-admin`. You will see the fake admin login page. Go back to your dashboard tab, and you will see your IP logged trying to access `/wp-admin`.
+
+4. **Test the SSH Honeypot:**
+   Open a terminal and SSH into the honeypot:
+   ```bash
+   ssh root@localhost -p 2222
+   ```
+   - It will ask for a password. Type anything (e.g., `admin123`).
+   - You will drop into a fake shell. Type `ls`, `whoami`, or `cat secrets.txt`.
+   - Open the dashboard in your browser, and watch your commands appear in real-time on the web UI.
+
 ## 🖥️ Local Development
 
 Want to contribute or run it without Docker? 

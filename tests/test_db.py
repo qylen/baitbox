@@ -4,16 +4,21 @@ import unittest
 from pathlib import Path
 
 from baitbox import db
+from baitbox import db_sqlite
 
 
 class DatabaseTests(unittest.TestCase):
     def setUp(self):
         self.tmpdir = tempfile.TemporaryDirectory()
         self.old_db_name = db.DB_NAME
-        db.DB_NAME = str(Path(self.tmpdir.name) / "events.db")
+        self.old_sqlite_db_name = db_sqlite.DB_NAME
+        tmp_db = str(Path(self.tmpdir.name) / "events.db")
+        db.DB_NAME = tmp_db
+        db_sqlite.DB_NAME = tmp_db
 
     def tearDown(self):
         db.DB_NAME = self.old_db_name
+        db_sqlite.DB_NAME = self.old_sqlite_db_name
         self.tmpdir.cleanup()
 
     def test_event_round_trip_decodes_payload_and_orders_oldest_first(self):
@@ -41,10 +46,14 @@ class GeoIPCacheTests(unittest.TestCase):
     def setUp(self):
         self.tmpdir = tempfile.TemporaryDirectory()
         self.old_db_name = db.DB_NAME
-        db.DB_NAME = str(Path(self.tmpdir.name) / "events.db")
+        self.old_sqlite_db_name = db_sqlite.DB_NAME
+        tmp_db = str(Path(self.tmpdir.name) / "events.db")
+        db.DB_NAME = tmp_db
+        db_sqlite.DB_NAME = tmp_db
 
     def tearDown(self):
         db.DB_NAME = self.old_db_name
+        db_sqlite.DB_NAME = self.old_sqlite_db_name
         self.tmpdir.cleanup()
 
     def test_geoip_cache_round_trip_and_expiry(self):

@@ -24,13 +24,16 @@
   - **IP Block/Unblock** controls — one click blocks an IP and terminates their sessions
   - **Top Offending IPs, Top Passwords, Top HTTP Paths** leaderboards
   - **Active Intruder Controller** — live session view with BOOT/BLOCK/MAP buttons
+- **🔐 Dashboard Authentication:** Login-protected dashboard with bcrypt-hashed credentials and JWT session tokens.
 - **🔔 Webhook Notifications:** Discord and Slack alerts for auth attempts, commands, and decoy hits.
+- **📈 Anomaly Detection:** Real-time per-IP threat scoring with pattern analysis for rapid auth attempts, high-risk commands, privilege escalation, and sensitive file access.
 - **🚫 IP Rate Limiting & Block List:** Automatic connection tracking; manually block IPs from the dashboard.
+- **🐘 PostgreSQL Support:** Optional PostgreSQL backend for production-grade persistence via Docker Compose.
 - **🐳 Zero-Config Docker:** Full honeypot + dashboard in 5 seconds.
 
 ## ⚡ Quickstart
 
-### Docker (Recommended)
+### Docker (Recommended — SQLite, zero-config)
 
 ```bash
 docker run -d \
@@ -41,9 +44,20 @@ docker run -d \
   ghcr.io/qylen/baitbox:latest
 ```
 
-Open **http://localhost:8000** to see the dashboard.
+Open **http://localhost:8000** to see the dashboard.  
+Login with **admin / admin** (change via env vars in production!).
 
-### Python
+### Docker Compose (PostgreSQL backend)
+
+```bash
+git clone https://github.com/qylen/baitbox.git
+cd baitbox
+docker compose up -d
+```
+
+This starts BaitBox with a PostgreSQL database for production workloads. See `docker-compose.yml` for configuration.
+
+### Python (local dev)
 
 ```bash
 git clone https://github.com/qylen/baitbox.git
@@ -76,6 +90,18 @@ curl http://localhost:8000/.git/config
 
 Then open **http://localhost:8000** and watch your actions appear on the dashboard in real-time.
 
+## 🔐 Dashboard Authentication
+
+The dashboard requires authentication. Default credentials:
+
+| Variable | Default | Description |
+|---|---|---|
+| `BAITBOX_DASHBOARD_USER` | `admin` | Dashboard login username |
+| `BAITBOX_DASHBOARD_PASSWORD` | `admin` | Dashboard login password |
+| `BAITBOX_JWT_SECRET` | _(auto)_ | JWT signing secret — **change this in production** |
+
+All `/api/*` endpoints and the `/ws/feed` WebSocket require a valid JWT session cookie. Unauthenticated requests return **401 Unauthorized**.
+
 ## ⚙️ Configuration
 
 All settings are via environment variables:
@@ -89,6 +115,8 @@ All settings are via environment variables:
 | `BAITBOX_TELNET_PORT` | `2323` | Telnet honeypot port |
 | `BAITBOX_TELNET_ENABLED` | `1` | Set to `0` to disable Telnet |
 | `BAITBOX_DB` | `baitbox.db` | SQLite database path |
+| `BAITBOX_DB_TYPE` | `sqlite` | Database backend: `sqlite` or `postgresql` |
+| `BAITBOX_DATABASE_URL` | _(see below)_ | PostgreSQL connection URL (only used when `BAITBOX_DB_TYPE=postgresql`) |
 | `BAITBOX_MAX_EVENTS` | `100` | Max events kept client-side |
 | `BAITBOX_SSH_HOST_KEY` | _(empty)_ | Path to RSA host key (auto-generated if empty) |
 | `BAITBOX_SSH_BACKLOG` | `100` | TCP listen backlog |
@@ -97,27 +125,53 @@ All settings are via environment variables:
 | `BAITBOX_GEOIP_ENABLED` | `1` | Set to `0` to disable server-side GeoIP lookups |
 | `BAITBOX_WEBHOOK_URL` | _(empty)_ | Discord/Slack webhook URL |
 | `BAITBOX_WEBHOOK_TYPE` | `discord` | Webhook format: `discord`, `slack`, or `generic` |
+| `BAITBOX_DASHBOARD_USER` | `admin` | Dashboard login username |
+| `BAITBOX_DASHBOARD_PASSWORD` | `admin` | Dashboard login password |
+| `BAITBOX_JWT_SECRET` | _(auto)_ | JWT signing secret |
+
+## 📈 Anomaly Detection
+
+BaitBox includes a real-time anomaly detection engine that scores each attacker IP based on behavioral patterns:
+
+| Pattern | Score | Description |
+|---|---|---|
+| Multiple failed logins | +15 | ≥5 auth attempts from a single IP |
+| Rapid auth attempts | +30 | ≥3 auth attempts within 10 seconds |
+| High-risk commands | +30 | `wget`, `curl`, `chmod`, `chown`, `nc`, `ncat`, etc. |
+| Privilege escalation | +25 | `root` login or `sudo`/`su` commands |
+| Sensitive file access | +20 | Access to `/etc/shadow`, `/etc/passwd`, `.env`, SSH keys |
+| Rapid command execution | +35 | ≥5 commands within 10 seconds |
+
+**Threat levels:** LOW (0–29) · MEDIUM (30–59) · HIGH (60–89) · CRITICAL (90–100)
+
+Scores are displayed per-session on the dashboard and included in webhook notifications.
 
 ## 🌐 API Endpoints
 
-| Endpoint | Description |
-|---|---|
-| `GET /api/events?limit=100` | Recent events (oldest-to-newest) with server-side GeoIP enrichment |
-| `GET /api/stats` | Aggregate stats: totals, protocol splits, top IPs, passwords, HTTP paths, hourly timeline, blocked IPs |
-| `GET /api/sessions` | Active SSH sessions with GeoIP data |
-| `POST /api/sessions/{id}/kill` | Terminate an SSH session |
-| `POST /api/block/{ip}` | Block an IP and terminate all its sessions |
-| `POST /api/unblock/{ip}` | Unblock an IP |
-| `GET /api/geoip/{ip}` | Server-side GeoIP lookup with threat scoring (cached 1h) |
-| `WS /ws/feed` | Real-time event WebSocket feed with GeoIP enrichment |
+| Endpoint | Auth | Description |
+|---|---|---|
+| `POST /login` | No | Authenticate and receive JWT session cookie |
+| `POST /logout` | Yes | Clear session cookie |
+| `GET /api/events?limit=100` | Yes | Recent events (oldest-to-newest) with GeoIP enrichment |
+| `GET /api/stats` | Yes | Aggregate stats: totals, protocol splits, top IPs, passwords, HTTP paths, hourly timeline, blocked IPs |
+| `GET /api/sessions` | Yes | Active SSH sessions with GeoIP data |
+| `POST /api/sessions/{id}/kill` | Yes | Terminate an SSH session |
+| `POST /api/block/{ip}` | Yes | Block an IP and terminate all its sessions |
+| `POST /api/unblock/{ip}` | Yes | Unblock an IP |
+| `GET /api/geoip/{ip}` | Yes | Server-side GeoIP lookup with threat scoring (cached 1h) |
+| `GET /api/threat/{ip}` | Yes | Real-time anomaly/threat score for an IP |
+| `WS /ws/feed` | Yes | Real-time event WebSocket feed with GeoIP enrichment |
 
 ## 🏗️ Project Structure
 
 ```text
 baitbox/
 ├── baitbox/
+│   ├── anomaly.py         # Real-time anomaly detection engine
 │   ├── config.py          # Settings from environment variables
-│   ├── db.py              # SQLite persistence
+│   ├── db.py              # Database abstraction layer (SQLite/PostgreSQL)
+│   ├── db_sqlite.py       # SQLite persistence backend
+│   ├── db_postgres.py     # PostgreSQL persistence backend
 │   ├── geoip.py           # Server-side GeoIP with threat scoring
 │   ├── main.py            # Entry point (starts all servers)
 │   ├── pubsub.py          # Asyncio pub/sub for WebSocket broadcasting
@@ -126,16 +180,20 @@ baitbox/
 │   ├── vfs.py             # Virtual filesystem for SSH honeypot
 │   ├── webhooks.py        # Discord/Slack/generic webhook notifications
 │   ├── servers/
-│   │   ├── http_server.py # FastAPI dashboard + HTTP honeypot
+│   │   ├── http_server.py # FastAPI dashboard + HTTP honeypot + auth
 │   │   ├── ssh_server.py  # Paramiko SSH honeypot (50+ commands)
 │   │   └── telnet_server.py # Asyncio Telnet honeypot
 │   └── static/
-│       └── index.html     # Premium single-page dashboard
+│       └── index.html     # Premium single-page dashboard with login
 ├── tests/
-│   ├── test_db.py
-│   ├── test_ratelimit.py  # NEW: Rate limiter tests
+│   ├── test_anomaly.py    # Anomaly detection tests
+│   ├── test_auth.py       # Dashboard authentication tests
+│   ├── test_db.py         # Database round-trip tests
+│   ├── test_http_server.py # HTTP honeypot tests
+│   ├── test_ratelimit.py  # Rate limiter tests
 │   ├── test_ssh_server.py # 40+ SSH command tests
 │   └── test_vfs.py        # 50+ VFS tests
+├── docker-compose.yml     # PostgreSQL + BaitBox stack
 ├── Dockerfile
 ├── requirements.txt
 └── README.md

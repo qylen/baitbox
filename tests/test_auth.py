@@ -5,6 +5,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from baitbox import db
+from baitbox import db_sqlite
 from baitbox.config import settings
 from baitbox.servers.http_server import app, create_jwt_token, verify_jwt_token, verify_user_credentials
 
@@ -13,7 +14,10 @@ class AuthTests(unittest.TestCase):
     def setUp(self):
         self.tmpdir = tempfile.TemporaryDirectory()
         self.old_db_name = db.DB_NAME
-        db.DB_NAME = str(Path(self.tmpdir.name) / "events.db")
+        self.old_sqlite_db_name = db_sqlite.DB_NAME
+        tmp_db = str(Path(self.tmpdir.name) / "events.db")
+        db.DB_NAME = tmp_db
+        db_sqlite.DB_NAME = tmp_db
 
         # Initialize test DB with default admin user
         async def init():
@@ -25,6 +29,7 @@ class AuthTests(unittest.TestCase):
 
     def tearDown(self):
         db.DB_NAME = self.old_db_name
+        db_sqlite.DB_NAME = self.old_sqlite_db_name
         self.tmpdir.cleanup()
 
     def test_verify_jwt_token(self):

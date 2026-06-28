@@ -31,6 +31,9 @@ class Settings:
 
     # Dashboard Authentication
     dashboard_username: str = os.getenv("BAITBOX_DASHBOARD_USER", "admin")
+    # Database selection
+    database_type: str = os.getenv("BAITBOX_DB_TYPE", "sqlite")
+    database_url: str = os.getenv("BAITBOX_DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/baitbox")
     dashboard_password: str = os.getenv("BAITBOX_DASHBOARD_PASSWORD", "admin")
     jwt_secret: str = os.getenv("BAITBOX_JWT_SECRET", "baitbox-super-secret-key-change-me")
 

@@ -1,254 +1,50 @@
-"""SQLite persistence helpers for honeypot events."""
+"""Database Abstraction Layer for BaitBox persistence."""
 
 from __future__ import annotations
-
-import datetime as dt
-import json
-import time
-from typing import Any
-
-import aiosqlite
-
+from typing import Any, Dict, List, Optional
 from .config import settings
+from .db_sqlite import SQLiteDB
+from .db_postgres import PostgresDB
 
 DB_NAME = settings.database_path
 
+# Select the active backend instance based on configuration
+if settings.database_type.lower() in ("postgres", "postgresql"):
+    db_instance = PostgresDB()
+else:
+    db_instance = SQLiteDB()
+
 
 async def init_db() -> None:
-    async with aiosqlite.connect(DB_NAME) as db:
-        await db.execute(
-            """
-            CREATE TABLE IF NOT EXISTS events (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp TEXT NOT NULL,
-                src_ip TEXT NOT NULL,
-                protocol TEXT NOT NULL,
-                event_type TEXT NOT NULL,
-                payload TEXT NOT NULL
-            )
-            """
-        )
-        await db.execute("CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp)")
-        await db.execute("CREATE INDEX IF NOT EXISTS idx_events_src_ip ON events(src_ip)")
-        await db.execute("CREATE INDEX IF NOT EXISTS idx_events_protocol ON events(protocol)")
-        await db.execute("CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type)")
-        await db.execute("CREATE INDEX IF NOT EXISTS idx_events_protocol_type ON events(protocol, event_type)")
-        # GeoIP cache table
-        await db.execute(
-            """
-            CREATE TABLE IF NOT EXISTS geoip_cache (
-                ip TEXT PRIMARY KEY,
-                data TEXT NOT NULL,
-                expires_at REAL NOT NULL
-            )
-            """
-        )
-        await db.execute("CREATE INDEX IF NOT EXISTS idx_geoip_cache_expires ON geoip_cache(expires_at)")
-        # Users table for dashboard auth
-        await db.execute(
-            """
-            CREATE TABLE IF NOT EXISTS users (
-                username TEXT PRIMARY KEY,
-                password_hash TEXT NOT NULL
-            )
-            """
-        )
-        await db.commit()
-
-        # Ensure the configured user exists and is up to date
-        import bcrypt
-        hashed = bcrypt.hashpw(settings.dashboard_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
-        await db.execute(
-            """
-            INSERT INTO users (username, password_hash)
-            VALUES (?, ?)
-            ON CONFLICT(username) DO UPDATE SET password_hash = excluded.password_hash
-            """,
-            (settings.dashboard_username, hashed),
-        )
-        await db.commit()
+    """Initialize database tables and seed configuration data."""
+    await db_instance.init_db()
 
 
-async def get_geoip_cache(ip: str) -> dict[str, Any] | None:
-    """Return a non-expired GeoIP cache entry from SQLite, if present."""
-    async with aiosqlite.connect(DB_NAME) as db:
-        db.row_factory = aiosqlite.Row
-        row = await (
-            await db.execute(
-                "SELECT data, expires_at FROM geoip_cache WHERE ip = ?",
-                (ip,),
-            )
-        ).fetchone()
-
-    if not row or float(row["expires_at"]) <= time.time():
-        return None
-
-    try:
-        return json.loads(row["data"])
-    except json.JSONDecodeError:
-        return None
+async def get_geoip_cache(ip: str) -> Optional[Dict[str, Any]]:
+    """Retrieve GeoIP cache entry from the database."""
+    return await db_instance.get_geoip_cache(ip)
 
 
-async def set_geoip_cache(ip: str, data: dict[str, Any], ttl: int = 3600) -> None:
-    """Persist GeoIP lookup data so restarts do not immediately refetch it."""
-    expires_at = time.time() + ttl
-    async with aiosqlite.connect(DB_NAME) as db:
-        await db.execute(
-            """
-            INSERT INTO geoip_cache (ip, data, expires_at)
-            VALUES (?, ?, ?)
-            ON CONFLICT(ip) DO UPDATE SET data = excluded.data, expires_at = excluded.expires_at
-            """,
-            (ip, json.dumps(data, sort_keys=True), expires_at),
-        )
-        await db.execute("DELETE FROM geoip_cache WHERE expires_at <= ?", (time.time(),))
-        await db.commit()
+async def set_geoip_cache(ip: str, data: Dict[str, Any], ttl: int = 3600) -> None:
+    """Cache GeoIP results to avoid repeated lookups."""
+    await db_instance.set_geoip_cache(ip, data, ttl)
 
 
-async def log_event(src_ip: str, protocol: str, event_type: str, payload: dict[str, Any]) -> dict[str, Any]:
-    timestamp = dt.datetime.now(dt.UTC).isoformat()
-    payload_str = json.dumps(payload, sort_keys=True)
-
-    async with aiosqlite.connect(DB_NAME) as db:
-        cursor = await db.execute(
-            "INSERT INTO events (timestamp, src_ip, protocol, event_type, payload) VALUES (?, ?, ?, ?, ?)",
-            (timestamp, src_ip, protocol, event_type, payload_str),
-        )
-        await db.commit()
-        event_id = cursor.lastrowid
-
-    event = {
-        "id": event_id,
-        "timestamp": timestamp,
-        "src_ip": src_ip,
-        "protocol": protocol,
-        "event_type": event_type,
-        "payload": payload,
-    }
-
-    try:
-        from .anomaly import analyze_event
-        threat_info = analyze_event(event)
-        event["threat_score"] = threat_info["threat_score"]
-        event["threat_level"] = threat_info["threat_level"]
-        event["threat_reasons"] = threat_info["reasons"]
-    except Exception:
-        pass
-
-    try:
-        from .webhooks import send_webhook_notification
-        send_webhook_notification(event)
-    except Exception:
-        pass
-
-    return event
+async def log_event(src_ip: str, protocol: str, event_type: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Persist a honeypot event to the active database backend."""
+    return await db_instance.log_event(src_ip, protocol, event_type, payload)
 
 
-
-def _decode_row(row: aiosqlite.Row) -> dict[str, Any]:
-    event = dict(row)
-    try:
-        event["payload"] = json.loads(event.get("payload") or "{}")
-    except json.JSONDecodeError:
-        event["payload"] = {"raw": event.get("payload", "")}
-    return event
+async def get_recent_events(limit: int = 50) -> List[Dict[str, Any]]:
+    """Retrieve the most recent logged events."""
+    return await db_instance.get_recent_events(limit)
 
 
-async def get_recent_events(limit: int = 50) -> list[dict[str, Any]]:
-    async with aiosqlite.connect(DB_NAME) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute("SELECT * FROM events ORDER BY id DESC LIMIT ?", (limit,))
-        rows = await cursor.fetchall()
-        return [_decode_row(row) for row in reversed(rows)]
+async def get_stats() -> Dict[str, Any]:
+    """Retrieve telemetry metrics for the dashboards."""
+    return await db_instance.get_stats()
 
 
-async def get_stats() -> dict[str, Any]:
-    """Return aggregate telemetry for dashboards and API clients."""
-    async with aiosqlite.connect(DB_NAME) as db:
-        db.row_factory = aiosqlite.Row
-        total = (await (await db.execute("SELECT COUNT(*) AS count FROM events")).fetchone())["count"]
-        by_protocol = await (await db.execute(
-            "SELECT protocol, COUNT(*) AS count FROM events GROUP BY protocol ORDER BY count DESC"
-        )).fetchall()
-        by_event_type = await (await db.execute(
-            "SELECT event_type, COUNT(*) AS count FROM events GROUP BY event_type ORDER BY count DESC"
-        )).fetchall()
-        top_ips = await (await db.execute(
-            "SELECT src_ip, COUNT(*) AS count FROM events GROUP BY src_ip ORDER BY count DESC LIMIT 10"
-        )).fetchall()
-        recent_commands = await (await db.execute(
-            """
-            SELECT timestamp, src_ip, json_extract(payload, '$.command') AS command
-            FROM events
-            WHERE protocol = 'SSH' AND event_type = 'command'
-            ORDER BY id DESC
-            LIMIT 20
-            """
-        )).fetchall()
-        top_passwords = await (await db.execute(
-            """
-            SELECT json_extract(payload, '$.password') AS password, COUNT(*) AS count
-            FROM events
-            WHERE event_type = 'auth_attempt' AND json_extract(payload, '$.password') IS NOT NULL
-            GROUP BY password
-            ORDER BY count DESC
-            LIMIT 10
-            """
-        )).fetchall()
-        top_usernames = await (await db.execute(
-            """
-            SELECT json_extract(payload, '$.username') AS username, COUNT(*) AS count
-            FROM events
-            WHERE event_type = 'auth_attempt' AND json_extract(payload, '$.username') IS NOT NULL
-            GROUP BY username
-            ORDER BY count DESC
-            LIMIT 10
-            """
-        )).fetchall()
-        # Events per hour over last 24h for timeline chart
-        hourly = await (await db.execute(
-            """
-            SELECT strftime('%Y-%m-%dT%H:00:00', timestamp) AS hour, COUNT(*) AS count
-            FROM events
-            WHERE timestamp >= datetime('now', '-24 hours')
-            GROUP BY hour
-            ORDER BY hour
-            """
-        )).fetchall()
-        # Top HTTP paths probed
-        top_paths = await (await db.execute(
-            """
-            SELECT json_extract(payload, '$.path') AS path, COUNT(*) AS count
-            FROM events
-            WHERE protocol = 'HTTP'
-            GROUP BY path
-            ORDER BY count DESC
-            LIMIT 10
-            """
-        )).fetchall()
-
-    return {
-        "total_events": total,
-        "by_protocol": [dict(row) for row in by_protocol],
-        "by_event_type": [dict(row) for row in by_event_type],
-        "top_ips": [dict(row) for row in top_ips],
-        "top_passwords": [dict(row) for row in top_passwords],
-        "top_usernames": [dict(row) for row in top_usernames],
-        "recent_commands": [dict(row) for row in recent_commands],
-        "hourly_events": [dict(row) for row in hourly],
-        "top_http_paths": [dict(row) for row in top_paths],
-    }
-
-
-async def get_user_password_hash(username: str) -> str | None:
-    """Retrieve the hashed password for a user from the SQLite database."""
-    async with aiosqlite.connect(DB_NAME) as db:
-        db.row_factory = aiosqlite.Row
-        row = await (
-            await db.execute(
-                "SELECT password_hash FROM users WHERE username = ?",
-                (username,),
-            )
-        ).fetchone()
-    return row["password_hash"] if row else None
-
+async def get_user_password_hash(username: str) -> Optional[str]:
+    """Retrieve the password hash for a dashboard user."""
+    return await db_instance.get_user_password_hash(username)

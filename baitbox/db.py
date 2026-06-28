@@ -127,12 +127,22 @@ async def log_event(src_ip: str, protocol: str, event_type: str, payload: dict[s
     }
 
     try:
+        from .anomaly import analyze_event
+        threat_info = analyze_event(event)
+        event["threat_score"] = threat_info["threat_score"]
+        event["threat_level"] = threat_info["threat_level"]
+        event["threat_reasons"] = threat_info["reasons"]
+    except Exception:
+        pass
+
+    try:
         from .webhooks import send_webhook_notification
         send_webhook_notification(event)
     except Exception:
         pass
 
     return event
+
 
 
 def _decode_row(row: aiosqlite.Row) -> dict[str, Any]:

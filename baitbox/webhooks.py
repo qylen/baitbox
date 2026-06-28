@@ -33,9 +33,16 @@ def _send_webhook_sync(event: dict[str, Any]) -> None:
     data: dict[str, Any] = {}
     
     if w_type == "discord":
+        threat_level = event.get("threat_level", "LOW")
+        color = 3447003
+        if threat_level == "CRITICAL":
+            color = 15548997
+        elif threat_level == "MEDIUM":
+            color = 16753920
+
         embed = {
             "title": f"🚨 BaitBox Honeypot Alert ({protocol})",
-            "color": 15548997 if event_type in ("credential_probe", "auth_attempt") else 3447003,
+            "color": color,
             "fields": [
                 {"name": "Attacker IP", "value": f"`{src_ip}`", "inline": True},
                 {"name": "Protocol", "value": f"`{protocol}`", "inline": True},
@@ -43,6 +50,14 @@ def _send_webhook_sync(event: dict[str, Any]) -> None:
             ],
             "footer": {"text": "BaitBox Honeypot Telemetry"}
         }
+
+        # Add threat details to fields
+        threat_score = event.get("threat_score", 0)
+        reasons = event.get("threat_reasons", [])
+        threat_emoji = "🔴" if threat_level == "CRITICAL" else "🟡" if threat_level == "MEDIUM" else "🟢"
+        embed["fields"].append({"name": "Threat Level", "value": f"{threat_emoji} `{threat_level}` ({threat_score}%)", "inline": True})
+        if reasons:
+            embed["fields"].append({"name": "Threat Indicators", "value": "\n".join(f"• {r}" for r in reasons), "inline": False})
         
         if event_type == "auth_attempt":
             user = payload.get("username", "unknown")
@@ -66,7 +81,17 @@ def _send_webhook_sync(event: dict[str, Any]) -> None:
         data = {"embeds": [embed]}
         
     elif w_type == "slack":
-        text = f"🚨 *BaitBox Honeypot Alert ({protocol})*\n*Attacker IP:* `{src_ip}`\n*Event:* `{event_type}`\n"
+        threat_level = event.get("threat_level", "LOW")
+        threat_score = event.get("threat_score", 0)
+        reasons = event.get("threat_reasons", [])
+        threat_emoji = "🔴" if threat_level == "CRITICAL" else "🟡" if threat_level == "MEDIUM" else "🟢"
+
+        text = f"🚨 *BaitBox Honeypot Alert ({protocol})*\n"
+        text += f"*Threat Level:* {threat_emoji} `{threat_level}` ({threat_score}%)\n"
+        text += f"*Attacker IP:* `{src_ip}`\n*Event:* `{event_type}`\n"
+        if reasons:
+            text += "*Threat Indicators:*\n" + "\n".join(f"• {r}" for r in reasons) + "\n"
+
         if event_type == "auth_attempt":
             text += f"• Username: `{payload.get('username')}`\n• Password: `{payload.get('password')}`"
         elif event_type == "command":
@@ -80,6 +105,7 @@ def _send_webhook_sync(event: dict[str, Any]) -> None:
         
     else:  # generic JSON payload
         data = event
+
 
     try:
         req = urllib.request.Request(

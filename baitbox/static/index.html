@@ -1207,11 +1207,40 @@ function buildEventRow(ev) {
   div.className = 'event-row';
 
   const geo = geoCache[ev.src_ip];
-  const threat = (geo && geo.threat_score) ? geo.threat_score : 0;
   const country = geo ? `${geo.city ? geo.city + ', ' : ''}${geo.countryCode || ''}` : '';
 
-  const threatClass = threat >= 60 ? 'threat-high' : threat >= 30 ? 'threat-medium' : 'threat-low';
-  const threatLabel = threat >= 60 ? '🔴 HIGH' : threat >= 30 ? '🟡 MED' : '🟢 LOW';
+  let threat = 0;
+  let threatLabel = '🟢 LOW';
+  let threatClass = 'threat-low';
+
+  if (ev.threat_score !== undefined) {
+    threat = ev.threat_score;
+    const level = ev.threat_level || 'LOW';
+    if (level === 'CRITICAL') {
+      threatLabel = '🔴 CRITICAL';
+      threatClass = 'threat-high';
+    } else if (level === 'MEDIUM') {
+      threatLabel = '🟡 MEDIUM';
+      threatClass = 'threat-medium';
+    } else {
+      threatLabel = '🟢 LOW';
+      threatClass = 'threat-low';
+    }
+  } else {
+    // Fallback to GeoIP threat score
+    const geoThreat = (geo && geo.threat_score) ? geo.threat_score : 0;
+    threat = geoThreat;
+    if (geoThreat >= 60) {
+      threatLabel = '🔴 HIGH';
+      threatClass = 'threat-high';
+    } else if (geoThreat >= 30) {
+      threatLabel = '🟡 MED';
+      threatClass = 'threat-medium';
+    } else {
+      threatLabel = '🟢 LOW';
+      threatClass = 'threat-low';
+    }
+  }
 
   const proto = (ev.protocol || 'UNK').toLowerCase();
 
@@ -1221,7 +1250,7 @@ function buildEventRow(ev) {
     <span class="ev-ip" onclick="centerMapOnIP('${ev.src_ip}')">${ev.src_ip}</span>
     ${country ? `<span class="ev-country">(${country})</span>` : ''}
     <span class="ev-type">${ev.event_type}</span>
-    <span class="ev-threat ${threatClass}">${threatLabel}</span>
+    <span class="ev-threat ${threatClass}" title="${threat}% risk">${threatLabel}</span>
     <div class="ev-body">${escHtml(formatPayload(ev))}</div>
   `;
   return div;
@@ -1248,10 +1277,22 @@ function renderSessions() {
     const country = geo.country ? ` · ${geo.countryCode || geo.country}` : '';
     const card = document.createElement('div');
     card.className = 'session-card';
+
+    // Determine threat level badge
+    const threatLevel = s.threat_level || 'LOW';
+    const threatBadge = threatLevel === 'CRITICAL'
+      ? '<span class="badge" style="border-color:var(--red);color:var(--red);font-weight:bold;margin-left:8px;padding:2px 8px;font-size:8px;">🔴 CRITICAL</span>'
+      : (threatLevel === 'MEDIUM'
+        ? '<span class="badge" style="border-color:var(--amber);color:var(--amber);margin-left:8px;padding:2px 8px;font-size:8px;">🟡 MEDIUM</span>'
+        : '<span class="badge" style="border-color:var(--green);color:var(--green);margin-left:8px;padding:2px 8px;font-size:8px;">🟢 LOW</span>');
+
     card.innerHTML = `
       <div class="session-header">
         <div>
-          <div class="session-ip">${s.src_ip}${country}</div>
+          <div class="session-ip" style="display:flex;align-items:center;flex-wrap:wrap;gap:4px;">
+            <span>${s.src_ip}${country}</span>
+            ${threatBadge}
+          </div>
           <div class="session-meta">user: ${s.username} · port: ${s.src_port}</div>
         </div>
       </div>

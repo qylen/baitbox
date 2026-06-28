@@ -267,16 +267,22 @@ async def dashboard() -> str:
 @app.get("/api/events")
 async def api_events(limit: int = 100) -> list[dict[str, Any]]:
     events = await get_recent_events(limit=min(max(limit, 1), 500))
-    # Enrich with cached GeoIP data server-side
+    # Enrich with cached GeoIP and threat metrics
     try:
         from ..geoip import get_cached
+        from ..anomaly import get_threat_score
         for ev in events:
             geo = get_cached(ev.get("src_ip", ""))
             if geo:
                 ev["geo"] = geo
+            threat = get_threat_score(ev.get("src_ip", ""))
+            ev["threat_score"] = threat["threat_score"]
+            ev["threat_level"] = threat["threat_level"]
+            ev["threat_reasons"] = threat["reasons"]
     except Exception:
         pass
     return events
+
 
 
 @app.get("/api/stats")
@@ -292,16 +298,22 @@ async def api_stats() -> dict[str, Any]:
 async def api_sessions() -> list[dict[str, Any]]:
     from ..sessions import session_manager
     sessions = session_manager.list_sessions()
-    # Enrich with cached GeoIP
+    # Enrich with cached GeoIP and anomaly threat metrics
     try:
         from ..geoip import get_cached
+        from ..anomaly import get_threat_score
         for s in sessions:
             geo = get_cached(s.get("src_ip", ""))
             if geo:
                 s["geo"] = geo
+            threat = get_threat_score(s.get("src_ip", ""))
+            s["threat_score"] = threat["threat_score"]
+            s["threat_level"] = threat["threat_level"]
+            s["threat_reasons"] = threat["reasons"]
     except Exception:
         pass
     return sessions
+
 
 
 @app.post("/api/sessions/{session_id}/kill")
@@ -355,12 +367,17 @@ async def websocket_feed(websocket: WebSocket) -> None:
     try:
         while True:
             event = await queue.get()
-            # Enrich with cached geo
+            # Enrich with cached geo and threat metrics
             try:
                 from ..geoip import get_cached
+                from ..anomaly import get_threat_score
                 geo = get_cached(event.get("src_ip", ""))
                 if geo:
                     event["geo"] = geo
+                threat = get_threat_score(event.get("src_ip", ""))
+                event["threat_score"] = threat["threat_score"]
+                event["threat_level"] = threat["threat_level"]
+                event["threat_reasons"] = threat["reasons"]
             except Exception:
                 pass
             await websocket.send_json(event)
@@ -368,6 +385,7 @@ async def websocket_feed(websocket: WebSocket) -> None:
         pass
     finally:
         pubsub.unsubscribe(queue)
+
 
 
 @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"])

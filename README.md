@@ -14,8 +14,8 @@
 ## 🚀 Features
 
 - **🛡️ Multi-Protocol:** Simulates SSH and HTTP endpoints.
-- **🎭 Stateful Fake Filesystem:** SSH attackers are dropped into a virtual Python-powered filesystem. They can type `cd`, `ls -la`, `pwd`, `touch`, `mkdir`, `rm`, `echo` (with file redirection `>` and `>>`), `wget`/`curl` to fake-download scripts, `ping`, and even execute simple shell scripts!
-- **📊 Interactive Dashboard:** A beautiful, dark-mode command center showing real-time logs, CartoDB-powered GeoIP maps, Chart.js graphs, and attacker statistics.
+- **🎭 Stateful Fake Filesystem:** SSH attackers are dropped into a virtual Python-powered filesystem. They can type `cd`, `ls -la`, `pwd`, `touch`, `mkdir`, `rm`, `cp`, `mv`, `stat`, `head`, `tail`, `echo` (with file redirection `>` and `>>`), `wget`/`curl` to fake-download scripts, `ping`, and even execute simple shell scripts!
+- **📊 Interactive Dashboard:** A beautiful, dark-mode command center showing real-time logs, CartoDB-powered GeoIP maps, Chart.js graphs, attacker statistics, top credential guesses, and recent SSH commands.
 - **🔌 Active Intruder Controller:** Monitor current SSH connections live and terminate/boot off attackers instantly from the web interface.
 - **🔔 Webhook Notifications:** Receive instant alert updates directly to Discord or Slack when logins are attempted, commands are run, or decoy paths are hit.
 - **🐳 Zero-Config Docker:** Spin up a full honeypot + dashboard in 5 seconds. No external databases needed.
@@ -111,6 +111,18 @@ BaitBox can be configured with environment variables:
 | `BAITBOX_SSH_CHANNEL_TIMEOUT` | `20` | Seconds to wait for an SSH shell or exec request before closing an idle channel. |
 | `BAITBOX_WEBHOOK_URL` | _(empty)_ | URL to send Discord, Slack, or generic HTTP alerts. |
 | `BAITBOX_WEBHOOK_TYPE` | `discord` | Type of webhook notification payload to construct (`discord`, `slack`, or `generic`). |
+
+
+### API Endpoints
+
+BaitBox also exposes JSON endpoints for automation and external dashboards:
+
+| Endpoint | Description |
+| --- | --- |
+| `GET /api/events?limit=100` | Returns recent event telemetry, ordered oldest-to-newest. |
+| `GET /api/stats` | Returns aggregate telemetry including totals, protocol/event-type breakdowns, top IPs, top passwords, and recent SSH commands. |
+| `GET /api/sessions` | Lists active SSH intruder sessions with duration, idle time, working directory, and recent commands. |
+| `POST /api/sessions/{session_id}/kill` | Terminates an active SSH session. |
 
 ## 📸 Screenshots
 

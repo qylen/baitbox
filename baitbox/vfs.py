@@ -1,8 +1,7 @@
 """Stateful Virtual Filesystem (VFS) for the SSH honeypot shell."""
 
 from __future__ import annotations
-import shlex
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List
 
 class VirtualFilesystem:
     def __init__(self) -> None:
@@ -74,6 +73,47 @@ class VirtualFilesystem:
         if self.is_file(path):
             return self.fs[path]
         return None
+
+    def stat(self, path: str) -> dict[str, Any] | None:
+        """Return lightweight POSIX-like metadata for a virtual path."""
+        if path not in self.fs:
+            return None
+        is_dir = self.is_dir(path)
+        return {
+            "path": path,
+            "name": path.rstrip("/").split("/")[-1] or "/",
+            "type": "directory" if is_dir else "file",
+            "size": 4096 if is_dir else len(self.read_file(path) or b""),
+            "mode": "drwxr-xr-x" if is_dir else "-rw-r--r--",
+        }
+
+    def copy(self, source: str, destination: str) -> bool:
+        """Copy a file inside the virtual filesystem."""
+        if not self.is_file(source) or self.is_dir(destination):
+            return False
+        content = self.read_file(source)
+        if content is None:
+            return False
+        return self.write_file(destination, content)
+
+    def move(self, source: str, destination: str) -> bool:
+        """Move or rename a file or empty directory inside the virtual filesystem."""
+        if source == "/" or source not in self.fs or destination in self.fs:
+            return False
+        parent = "/".join(destination.split("/")[:-1]) or "/"
+        if not self.is_dir(parent):
+            return False
+        if self.is_file(source):
+            self.fs[destination] = self.fs.pop(source)
+            return True
+        if self.is_dir(source):
+            prefix = source if source.endswith("/") else source + "/"
+            children = [k for k in self.fs if k != source and k.startswith(prefix)]
+            if children:
+                return False
+            self.fs[destination] = self.fs.pop(source)
+            return True
+        return False
 
     def write_file(self, path: str, content: bytes) -> bool:
         parent = "/".join(path.split("/")[:-1])

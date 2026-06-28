@@ -87,7 +87,24 @@ Contributions are what make the open-source community such an amazing place to l
 5. Open a Pull Request
 
 *Ideas for contributions: RDP honeypot, Redis honeypot, Discord webhook integration for instant alerts.*
-
+Project Structure
+```text
+baitbox/
+├── baitbox/
+│   ├── __init__.py
+│   ├── main.py
+│   ├── db.py
+│   ├── pubsub.py
+│   ├── servers/
+│   │   ├── __init__.py
+│   │   ├── ssh_server.py
+│   │   └── http_server.py
+│   └── static/
+│       └── index.html
+├── Dockerfile
+├── requirements.txt
+└── README.md
+```
 ## ⚠️ Disclaimer
 
 BaitBox is intended for educational and research purposes only. By deploying a honeypot, you are intentionally inviting malicious traffic to your network. Ensure you are running this on an isolated machine or behind a strict firewall. The maintainers are not responsible for any damage to your systems.

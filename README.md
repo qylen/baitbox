@@ -13,10 +13,9 @@
 
 ## 🚀 Features
 
-- **🛡️ Multi-Protocol:** Simulates SSH, HTTP, and MySQL endpoints.
+- **🛡️ Multi-Protocol:** Simulates SSH and HTTP endpoints.
 - **🎭 Fake Filesystem:** Drops SSH attackers into a trap shell with a fake Linux filesystem. They think they have root, but they're going nowhere.
 - **📊 Real-time Dashboard:** A beautiful, dark-mode web UI showing live attacks, geolocation, and charts of top brute-forced passwords.
-- **🌍 GeoIP Integrated:** Instantly see where attacks are originating from.
 - **🐳 Zero-Config Docker:** Spin up a full honeypot + dashboard in 5 seconds. No external databases needed.
 
 ## ⚡ Quickstart
@@ -27,15 +26,13 @@ The fastest way to deploy BaitBox is via Docker.
 docker run -d \
   --name baitbox \
   -p 2222:2222 \
-  -p 8080:8080 \
   -p 8000:8000 \
   yourusername/baitbox:latest
 ```
 
 **You're live!** 
 - **SSH Honeypot:** Exposed on port `2222`
-- **HTTP Honeypot:** Exposed on port `8080`
-- **Dashboard:** Open your browser to `http://localhost:8000`
+- **Dashboard + HTTP Honeypot:** Open your browser to `http://localhost:8000`
 
 Watch the dashboard light up as bots start knocking on your door within minutes.
 
@@ -94,7 +91,18 @@ Instead of rejecting them, it drops them into a fake Python-based shell.
 **Every single command is streamed to your dashboard.**
 
 ### The HTTP Trap
-BaitBox serves fake login pages for common paths (`/wp-admin`, `/admin`). When bots POST credentials to these pages, BaitBox logs the IP, username, and password, then returns a "Invalid Credentials" error to keep the bot guessing.
+BaitBox serves fake login pages for common paths (`/wp-admin`, `/admin`, `/phpmyadmin`, and more). Requests and submitted payloads are logged to SQLite and streamed to the dashboard over WebSockets.
+
+### Configuration
+BaitBox can be configured with environment variables:
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `BAITBOX_SSH_HOST` | `0.0.0.0` | SSH honeypot bind address. |
+| `BAITBOX_SSH_PORT` | `2222` | SSH honeypot port. |
+| `BAITBOX_DASHBOARD_HOST` | `0.0.0.0` | Dashboard/HTTP honeypot bind address. |
+| `BAITBOX_DASHBOARD_PORT` | `8000` | Dashboard/HTTP honeypot port. |
+| `BAITBOX_DB` | `baitbox.db` | SQLite database path. |
 
 ## 📸 Screenshots
 
@@ -128,6 +136,7 @@ baitbox/
 │   └── static/
 │       └── index.html
 ├── Dockerfile
+├── tests/
 ├── requirements.txt
 └── README.md
 ```

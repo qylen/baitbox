@@ -1,20 +1,39 @@
+"""Small cross-thread pub/sub helper used by the dashboard feed."""
+
+from __future__ import annotations
+
 import asyncio
-from typing import Set
+from dataclasses import dataclass
+from typing import Any
+
+
+@dataclass(frozen=True)
+class _Subscriber:
+    queue: asyncio.Queue[dict[str, Any]]
+    loop: asyncio.AbstractEventLoop
+
 
 class PubSub:
-    def __init__(self):
-        self.waiters: Set[asyncio.Queue] = set()
+    def __init__(self) -> None:
+        self._subscribers: set[_Subscriber] = set()
 
-    async def publish(self, message: dict):
-        for queue in self.waiters:
-            await queue.put(message)
+    async def publish(self, message: dict[str, Any]) -> None:
+        stale: list[_Subscriber] = []
+        for subscriber in tuple(self._subscribers):
+            if subscriber.loop.is_closed():
+                stale.append(subscriber)
+                continue
+            subscriber.loop.call_soon_threadsafe(subscriber.queue.put_nowait, message)
+        for subscriber in stale:
+            self._subscribers.discard(subscriber)
 
-    async def subscribe(self) -> asyncio.Queue:
-        queue = asyncio.Queue()
-        self.waiters.add(queue)
+    async def subscribe(self) -> asyncio.Queue[dict[str, Any]]:
+        queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=1000)
+        self._subscribers.add(_Subscriber(queue=queue, loop=asyncio.get_running_loop()))
         return queue
 
-    def unsubscribe(self, queue: asyncio.Queue):
-        self.waiters.discard(queue)
+    def unsubscribe(self, queue: asyncio.Queue[dict[str, Any]]) -> None:
+        self._subscribers = {subscriber for subscriber in self._subscribers if subscriber.queue is not queue}
+
 
 pubsub = PubSub()

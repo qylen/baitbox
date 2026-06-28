@@ -2,6 +2,8 @@ import asyncio
 import tempfile
 import unittest
 from pathlib import Path
+import datetime as dt
+
 from fastapi.testclient import TestClient
 
 from baitbox import db
@@ -40,6 +42,10 @@ class AuthTests(unittest.TestCase):
         invalid = verify_jwt_token("invalid-token")
         self.assertIsNone(invalid)
 
+    def test_expired_jwt_token_is_rejected(self):
+        token = create_jwt_token("test-user", expires_delta=dt.timedelta(seconds=-1))
+        self.assertIsNone(verify_jwt_token(token))
+
     def test_verify_user_credentials(self):
         async def verify():
             # default credentials from config are "admin" / "admin"
@@ -63,6 +69,11 @@ class AuthTests(unittest.TestCase):
         response = self.client.get("/api/events")
         self.assertEqual(response.status_code, 401)
         self.assertEqual(response.json(), {"detail": "Unauthorized"})
+
+    def test_api_auth_login_alias_sets_cookie(self):
+        response = self.client.post("/api/auth/login", data={"username": "admin", "password": "admin"})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("session_token", response.cookies)
 
     def test_login_success_sets_cookie(self):
         # Perform POST /login with correct credentials
@@ -90,6 +101,11 @@ class AuthTests(unittest.TestCase):
         set_cookie = response.headers.get("set-cookie", "")
         self.assertTrue("session_token=" in set_cookie)
         self.assertTrue("Max-Age=0" in set_cookie or 'expires=' in set_cookie.lower())
+
+    def test_bearer_token_authenticates_api(self):
+        token = create_jwt_token("admin")
+        response = self.client.get("/api/events", headers={"Authorization": f"Bearer {token}"})
+        self.assertEqual(response.status_code, 200)
 
     def test_honeypot_endpoints_not_blocked_by_auth(self):
         # Honeypot paths must not be intercepted by auth

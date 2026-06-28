@@ -68,7 +68,7 @@ Want to contribute or run it without Docker?
 
 1. Clone the repo:
    ```bash
-   git clone https://github.com/yourusername/baitbox.git
+   git clone https://github.com/qylen/baitbox.git
    cd baitbox
    ```
 2. Install dependencies (using `uv` or `pip`):

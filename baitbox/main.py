@@ -11,6 +11,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+from .async_bridge import set_main_loop
 from .config import settings
 from .db import init_db
 from .servers.http_server import app
@@ -23,6 +24,15 @@ _SHUTDOWN = asyncio.Event()
 async def main() -> None:
     # Initialize Database
     await init_db()
+
+    loop = asyncio.get_running_loop()
+    set_main_loop(loop)
+
+    if settings.dashboard_password == "admin" or settings.jwt_secret == "baitbox-super-secret-key-change-me":
+        console.print(
+            "[bold yellow]⚠  Using default dashboard credentials or JWT secret — "
+            "set BAITBOX_DASHBOARD_PASSWORD and BAITBOX_JWT_SECRET in production.[/bold yellow]"
+        )
 
     # ── Boot Banner ─────────────────────────────────────────────────────────
     table = Table.grid(padding=(0, 2))

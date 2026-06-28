@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import shlex
 import socket
 import threading
@@ -13,6 +12,7 @@ from typing import Any
 
 import paramiko
 
+from ..async_bridge import run_on_main_loop
 from ..config import settings
 from ..db import log_event
 from ..pubsub import pubsub
@@ -115,9 +115,13 @@ class FakeShell(paramiko.ServerInterface):
         return True
 
 
+async def _log_and_publish(src_ip: str, event_type: str, payload: dict[str, Any]) -> None:
+    event = await log_event(src_ip, "SSH", event_type, payload)
+    await pubsub.publish(event)
+
+
 def _log_from_thread(src_ip: str, event_type: str, payload: dict[str, Any]) -> None:
-    event = asyncio.run(log_event(src_ip, "SSH", event_type, payload))
-    asyncio.run(pubsub.publish(event))
+    run_on_main_loop(_log_and_publish(src_ip, event_type, payload))
 
 
 def make_prompt(cwd: str, username: str = "root") -> bytes:
@@ -703,7 +707,7 @@ def handle_ssh_client(client: socket.socket, addr: tuple[str, int]) -> None:
     ip = addr[0]
     record_connection(ip, "SSH")
 
-    if is_blocked(ip):
+    if is_blocked(ip) or is_rate_limited(ip, "SSH"):
         client.close()
         return
 

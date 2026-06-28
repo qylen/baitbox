@@ -902,6 +902,7 @@ let stats = {};
 let blockedIps = new Set();
 let paused = false;
 let ws = null;
+let wsRetryMs = 1000;
 let map = null;
 let mapMarkers = {};   // key -> L.circleMarker
 let timelineChart = null;
@@ -950,8 +951,8 @@ async function geocodeIP(ip) {
   return null;
 }
 
-async function addToMap(ip) {
-  const geo = await geocodeIP(ip);
+async function addToMap(ip, knownGeo = null) {
+  const geo = knownGeo || await geocodeIP(ip);
   if (!geo || !geo.lat || !geo.lon) return;
   const key = `${geo.lat.toFixed(2)}_${geo.lon.toFixed(2)}`;
   if (mapMarkers[key]) {
@@ -1151,13 +1152,17 @@ function connectWS() {
   const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
   ws = new WebSocket(`${scheme}://${location.host}/ws/feed`);
 
-  ws.onopen = () => setWSStatus(true);
-  ws.onclose = () => { setWSStatus(false); setTimeout(connectWS, 3000); };
+  ws.onopen = () => { setWSStatus(true); wsRetryMs = 1000; };
+  ws.onclose = () => {
+    setWSStatus(false);
+    setTimeout(connectWS, wsRetryMs);
+    wsRetryMs = Math.min(wsRetryMs * 2, 30000);
+  };
 
   ws.onmessage = ({ data }) => {
     const ev = JSON.parse(data);
     if (ev.geo) geoCache[ev.src_ip] = ev.geo;
-    addToMap(ev.src_ip);
+    addToMap(ev.src_ip, ev.geo || null);
 
     events.push(ev);
     if (events.length > MAX_EVENTS) events.shift();
@@ -1440,7 +1445,7 @@ function escHtml(str) {
 function formatPayload(ev) {
   const p = ev.payload || {};
   if (ev.event_type === 'auth_attempt')
-    return `user="${p.username}" pw="${p.password}" [${p.method}]`;
+    return `user="${p.username}" pw="${p.password || '(n/a)'}" [${p.method || ev.protocol}]`;
   if (ev.event_type === 'command')
     return `$ ${p.command}`;
   if (ev.protocol === 'HTTP') {
@@ -1449,6 +1454,9 @@ function formatPayload(ev) {
     if (p.body && Object.keys(p.body).length)
       s += `\nPayload: ${JSON.stringify(p.body)}`;
     return s;
+  }
+  if (ev.protocol === 'Telnet') {
+    return p.command ? `$ ${p.command}` : JSON.stringify(p);
   }
   return JSON.stringify(p);
 }

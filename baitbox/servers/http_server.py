@@ -299,6 +299,26 @@ def _limit_value(limit: int, maximum: int = 500) -> int:
     return min(max(limit, 1), maximum)
 
 
+def _enrich_event(event: dict[str, Any]) -> dict[str, Any]:
+    """Attach cached GeoIP and live anomaly threat metrics to an event dict."""
+    try:
+        from ..geoip import get_cached, schedule_lookup
+        from ..anomaly import get_threat_score
+
+        src_ip = event.get("src_ip", "")
+        schedule_lookup(src_ip)
+        geo = get_cached(src_ip)
+        if geo:
+            event["geo"] = geo
+        threat = get_threat_score(src_ip)
+        event["threat_score"] = threat["threat_score"]
+        event["threat_level"] = threat["threat_level"]
+        event["threat_reasons"] = threat["reasons"]
+    except Exception:
+        pass
+    return event
+
+
 async def _request_payload(request: Request) -> dict[str, Any]:
     body = await request.body()
     truncated = len(body) > settings.http_max_body_bytes
@@ -386,18 +406,18 @@ async def healthz() -> dict[str, Any]:
 
 
 @app.get("/readyz")
-async def readyz() -> dict[str, Any]:
+async def readyz() -> Response:
     """Readiness probe — verifies database connectivity."""
     try:
         events = await get_recent_events(limit=1)
-        return {
+        return JSONResponse({
             "status": "ready",
             "service": "baitbox",
             "version": app.version,
             "database": settings.database_type,
             "events_accessible": True,
             "event_count_sample": len(events),
-        }
+        })
     except Exception as exc:
         return JSONResponse(
             {"status": "not_ready", "service": "baitbox", "error": str(exc)},
@@ -408,21 +428,7 @@ async def readyz() -> dict[str, Any]:
 @app.get("/api/events")
 async def api_events(limit: int = 100) -> list[dict[str, Any]]:
     events = await get_recent_events(limit=_limit_value(limit))
-    # Enrich with cached GeoIP and threat metrics
-    try:
-        from ..geoip import get_cached
-        from ..anomaly import get_threat_score
-        for ev in events:
-            geo = get_cached(ev.get("src_ip", ""))
-            if geo:
-                ev["geo"] = geo
-            threat = get_threat_score(ev.get("src_ip", ""))
-            ev["threat_score"] = threat["threat_score"]
-            ev["threat_level"] = threat["threat_level"]
-            ev["threat_reasons"] = threat["reasons"]
-    except Exception:
-        pass
-    return events
+    return [_enrich_event(ev) for ev in events]
 
 
 @app.get("/api/events/export")
@@ -460,21 +466,7 @@ async def api_stats() -> dict[str, Any]:
 async def api_sessions() -> list[dict[str, Any]]:
     from ..sessions import session_manager
     sessions = session_manager.list_sessions()
-    # Enrich with cached GeoIP and anomaly threat metrics
-    try:
-        from ..geoip import get_cached
-        from ..anomaly import get_threat_score
-        for s in sessions:
-            geo = get_cached(s.get("src_ip", ""))
-            if geo:
-                s["geo"] = geo
-            threat = get_threat_score(s.get("src_ip", ""))
-            s["threat_score"] = threat["threat_score"]
-            s["threat_level"] = threat["threat_level"]
-            s["threat_reasons"] = threat["reasons"]
-    except Exception:
-        pass
-    return sessions
+    return [_enrich_event(s) for s in sessions]
 
 
 
@@ -553,20 +545,7 @@ async def websocket_feed(websocket: WebSocket) -> None:
     try:
         while True:
             event = await queue.get()
-            # Enrich with cached geo and threat metrics
-            try:
-                from ..geoip import get_cached
-                from ..anomaly import get_threat_score
-                geo = get_cached(event.get("src_ip", ""))
-                if geo:
-                    event["geo"] = geo
-                threat = get_threat_score(event.get("src_ip", ""))
-                event["threat_score"] = threat["threat_score"]
-                event["threat_level"] = threat["threat_level"]
-                event["threat_reasons"] = threat["reasons"]
-            except Exception:
-                pass
-            await websocket.send_json(event)
+            await websocket.send_json(_enrich_event(event))
     except WebSocketDisconnect:
         pass
     finally:

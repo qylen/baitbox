@@ -137,3 +137,13 @@ def get_cached(ip: str) -> dict[str, Any] | None:
     if entry and entry["expires"] > time.time():
         return entry["data"]
     return None
+
+
+def schedule_lookup(ip: str) -> None:
+    """Queue a background GeoIP lookup when data is not already cached."""
+    if not settings.geoip_enabled or _is_private(ip) or get_cached(ip) is not None:
+        return
+
+    from .async_bridge import fire_and_forget
+
+    fire_and_forget(lookup_ip(ip))

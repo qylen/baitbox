@@ -17,13 +17,27 @@ class PubSub:
     def __init__(self) -> None:
         self._subscribers: set[_Subscriber] = set()
 
+    def _enqueue(self, queue: asyncio.Queue[dict[str, Any]], message: dict[str, Any]) -> None:
+        """Enqueue an event, dropping the oldest item when the queue is full."""
+        try:
+            queue.put_nowait(message)
+        except asyncio.QueueFull:
+            try:
+                queue.get_nowait()
+            except asyncio.QueueEmpty:
+                pass
+            try:
+                queue.put_nowait(message)
+            except asyncio.QueueFull:
+                pass
+
     async def publish(self, message: dict[str, Any]) -> None:
         stale: list[_Subscriber] = []
         for subscriber in tuple(self._subscribers):
             if subscriber.loop.is_closed():
                 stale.append(subscriber)
                 continue
-            subscriber.loop.call_soon_threadsafe(subscriber.queue.put_nowait, message)
+            subscriber.loop.call_soon_threadsafe(self._enqueue, subscriber.queue, message)
         for subscriber in stale:
             self._subscribers.discard(subscriber)
 

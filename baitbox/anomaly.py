@@ -22,6 +22,14 @@ def _clean_old_timestamps(lst: List[float], now: float, window: float = 60.0) ->
     return [t for t in lst if now - t <= window]
 
 
+def reset_metrics(ip: str | None = None) -> None:
+    """Clear in-memory anomaly metrics (used by tests)."""
+    if ip is None:
+        _ip_metrics.clear()
+    else:
+        _ip_metrics.pop(ip, None)
+
+
 def get_threat_score(ip: str) -> Dict[str, Any]:
     """
     Calculate the cumulative threat score and level for a given IP address.

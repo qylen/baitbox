@@ -63,7 +63,10 @@ def _send_webhook_sync(event: dict[str, Any]) -> None:
             user = payload.get("username", "unknown")
             pwd = payload.get("password", "unknown")
             method = payload.get("method", "unknown")
-            embed["description"] = f"**SSH Login Attempt**\n• Username: `{user}`\n• Password: `{pwd}`\n• Method: `{method}`"
+            if protocol == "Telnet":
+                embed["description"] = f"**Telnet Login Attempt**\n• Username: `{user}`\n• Password: `{pwd}`"
+            else:
+                embed["description"] = f"**SSH Login Attempt**\n• Username: `{user}`\n• Password: `{pwd}`\n• Method: `{method}`"
         elif event_type == "command":
             cmd = payload.get("command", "")
             mode = payload.get("mode", "shell")
@@ -93,7 +96,10 @@ def _send_webhook_sync(event: dict[str, Any]) -> None:
             text += "*Threat Indicators:*\n" + "\n".join(f"• {r}" for r in reasons) + "\n"
 
         if event_type == "auth_attempt":
-            text += f"• Username: `{payload.get('username')}`\n• Password: `{payload.get('password')}`"
+            if protocol == "Telnet":
+                text += f"• Username: `{payload.get('username')}`\n• Password: `{payload.get('password')}`"
+            else:
+                text += f"• Username: `{payload.get('username')}`\n• Password: `{payload.get('password')}`"
         elif event_type == "command":
             text += f"• Command: `{payload.get('command')}`"
         elif event_type == "credential_probe":

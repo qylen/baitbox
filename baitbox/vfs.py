@@ -194,6 +194,42 @@ class VirtualFilesystem:
                 b"MAIL_USERNAME=apikey\n"
                 b"MAIL_PASSWORD=SG.mock_sendgrid_key_placeholder\n"
             ),
+            "/var/www/html/config.php": (
+                b"<?php\n"
+                b"$config = array(\n"
+                b"    'db_host' => '10.0.0.10',\n"
+                b"    'db_user' => 'app_user',\n"
+                b"    'db_pass' => 'prod_db_pass_92837',\n"
+                b"    'db_name' => 'production',\n"
+                b"    'api_key' => 'sk_live_fake_key_abc123xyz',\n"
+                b");\n"
+            ),
+            "/var/www/html/database.php": (
+                b"<?php\n"
+                b"$mysqli = new mysqli('10.0.0.10', 'app_user', 'prod_db_pass_92837', 'production');\n"
+            ),
+            "/var/www/html/backup.sql": (
+                b"-- Database backup\n"
+                b"INSERT INTO users (username, password) VALUES ('admin', 'hashed_password_123');\n"
+            ),
+            "/var/www/html/requirements.txt": (
+                b"fastapi==0.115.12\n"
+                b"uvicorn==0.34.0\n"
+                b"sqlalchemy==2.0.0\n"
+                b"redis==5.0.0\n"
+            ),
+            "/var/www/html/docker-compose.yml": (
+                b"version: '3.8'\n"
+                b"services:\n"
+                b"  web:\n"
+                b"    image: nginx:latest\n"
+                b"    ports:\n"
+                b"      - '80:80'\n"
+                b"  db:\n"
+                b"    image: mysql:8.0\n"
+                b"    environment:\n"
+                b"      MYSQL_ROOT_PASSWORD: prod_mysql_root_pass_19283\n"
+            ),
 
             # --- /var/log files ---
             "/var/log/auth.log": (

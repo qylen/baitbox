@@ -101,6 +101,12 @@ class TelnetHoneypot(asyncio.Protocol):
 
         elif self.state == "shell":
             command = line.strip()
+            
+            # Validate command length
+            if len(command) > settings.max_command_length:
+                self.transport.write(b"sh: command line too long\r\n$ ")
+                return
+            
             if command:
                 event = await log_event(
                     self.peer_ip,

@@ -13,7 +13,7 @@
 
 - **🛡️ Multi-Protocol Honeypot:** Simultaneously traps SSH, HTTP, and Telnet attackers.
 - **🎭 Stateful Fake Filesystem (VFS):** SSH attackers are dropped into a convincing virtual Linux machine with realistic files: `~/.bash_history`, `~/.bashrc` (with fake DB passwords), `~/.ssh/authorized_keys`, `/var/www/html/.env`, `/etc/shadow`, `/etc/crontab`, Nginx config, MySQL dumps, auth logs, and more.
-- **💻 50+ Fake Shell Commands:** Full interactive shell with `ls -la` (hidden files), `cd ~`, `cat`, `grep`, `find`, `ps aux`, `netstat`, `ifconfig`/`ip`, `who`, `last`, `df`, `free`, `top`, `crontab -l`, `python3 -c`, `mysql`, `git log`, `systemctl status`, `nmap`, `wget`/`curl`, `ping`, `vi`/`nano`, `echo` with redirection, shell script execution, history navigation (↑ arrow), Ctrl+C, Ctrl+D.
+- **💻 70+ Fake Shell Commands:** Full interactive shell with `ls -la` (hidden files), `cd ~`, `cat`, `grep`, `find`, `ps aux`, `netstat`, `ifconfig`/`ip`, `who`, `last`, `df`, `free`, `top`, `crontab -l`, `python3 -c`, `mysql`, `git log`, `systemctl status`, `nmap`, `wget`/`curl`, `ping`, `vi`/`nano`, `chmod`, `chown`, `useradd`, `passwd`, `tar`, `gzip`, `zip`, `unzip`, `which`, `whereis`, `man`, `dpkg`, `apt`, `yum`, `echo` with redirection, shell script execution, history navigation (↑ arrow), Ctrl+C, Ctrl+D.
 - **📡 Telnet Honeypot:** An asyncio-powered Telnet server on port 2323 that captures credentials and commands.
 - **📊 Premium Dashboard:** A stunning, pure-vanilla-CSS cyber command center with:
   - **Live GeoIP Attack Map** (server-side resolution, cached, no API key needed)
@@ -30,6 +30,10 @@
 - **🚫 IP Rate Limiting & Block List:** Automatic connection tracking; manually block IPs from the dashboard.
 - **🐘 PostgreSQL Support:** Optional PostgreSQL backend for production-grade persistence via Docker Compose.
 - **🐳 Zero-Config Docker:** Full honeypot + dashboard in 5 seconds.
+- **🔒 Enhanced Security:** Input validation, command length limits, CORS support, and secure configuration defaults.
+- **🧹 Automatic Session Cleanup:** Background task to clean up stale SSH sessions (configurable).
+- **📝 Structured Logging:** Comprehensive logging with timestamps and log levels for debugging and monitoring.
+- **⚡ Performance Optimizations:** PostgreSQL connection pooling, enhanced caching, and optimized database queries.
 
 ## ⚡ Quickstart
 
@@ -130,11 +134,16 @@ All settings are via environment variables:
 | `BAITBOX_DASHBOARD_USER` | `admin` | Dashboard login username |
 | `BAITBOX_DASHBOARD_PASSWORD` | `admin` | Dashboard login password |
 | `BAITBOX_JWT_SECRET` | _(auto)_ | JWT signing secret |
+| `BAITBOX_JWT_EXPIRY_HOURS` | `24` | JWT token expiry time in hours |
 | `BAITBOX_SESSION_COOKIE_SECURE` | `0` | Set to `1` when the dashboard is served over HTTPS |
 | `BAITBOX_HTTP_MAX_BODY_BYTES` | `65536` | Max captured HTTP request body bytes per event |
 | `BAITBOX_RATE_LIMIT_SSH` | `20` | Max SSH connections per IP per 60-second window |
 | `BAITBOX_RATE_LIMIT_HTTP` | `100` | Max HTTP requests per IP per 60-second window |
 | `BAITBOX_RATE_LIMIT_TELNET` | `30` | Max Telnet connections per IP per 60-second window |
+| `BAITBOX_ENABLE_REQUEST_LOGGING` | `1` | Set to `0` to disable HTTP request logging |
+| `BAITBOX_MAX_COMMAND_LENGTH` | `4096` | Maximum command length for SSH/Telnet commands |
+| `BAITBOX_ENABLE_SESSION_CLEANUP` | `1` | Set to `0` to disable automatic session cleanup |
+| `BAITBOX_SESSION_CLEANUP_INTERVAL` | `300` | Session cleanup interval in seconds (default: 5 minutes) |
 
 ## 📈 Anomaly Detection
 

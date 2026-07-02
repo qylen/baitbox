@@ -16,7 +16,12 @@ class PostgresDB:
 
     async def _get_pool(self) -> asyncpg.Pool:
         if self._pool is None:
-            self._pool = await asyncpg.create_pool(settings.database_url)
+            self._pool = await asyncpg.create_pool(
+                settings.database_url,
+                min_size=2,
+                max_size=10,
+                command_timeout=30,
+            )
         return self._pool
 
     async def init_db(self) -> None:

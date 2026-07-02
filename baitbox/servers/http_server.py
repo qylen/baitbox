@@ -13,6 +13,7 @@ from typing import Any
 
 from fastapi import FastAPI, Form, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.middleware.cors import CORSMiddleware
 
 from ..db import get_recent_events, get_stats, log_event
 from ..pubsub import pubsub
@@ -41,9 +42,11 @@ LOGIN_HTML = STATIC_DIR / "login.html"
 
 def create_jwt_token(username: str, expires_delta: dt.timedelta | None = None) -> str:
     """Create a signed dashboard session token for a username."""
+    if expires_delta is None:
+        expires_delta = dt.timedelta(hours=settings.jwt_expiry_hours)
     payload = {
         "sub": username,
-        "exp": dt.datetime.now(dt.UTC) + (expires_delta or dt.timedelta(hours=24)),
+        "exp": dt.datetime.now(dt.UTC) + expires_delta,
     }
     return jwt.encode(payload, settings.jwt_secret, algorithm="HS256")
 
@@ -179,6 +182,15 @@ app = FastAPI(
 )
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(AuthMiddleware)
+# Note: CORS is permissive for honeypot purposes to capture all traffic
+# In production, consider restricting to specific origins if needed
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 _DASHBOARD_API_EXACT_PATHS = {
     "/api/events",
@@ -250,11 +262,122 @@ _DECOY_PATHS = {
     "/boaform/admin/formLogin",
     "/HNAP1",
     "/sdk",
+    # Additional common web attack paths
+    "/admin/login",
+    "/admin/login.php",
+    "/administrator/index.php",
+    "/user/login",
+    "/login.php",
+    "/auth/login",
+    "/account/login",
+    "/signin",
+    "/signin.php",
+    "/auth",
+    "/auth.php",
+    "/panel",
+    "/panel.php",
+    "/cpanel",
+    "/webadmin",
+    "/adminarea",
+    "/adminarea.php",
+    "/admincontrol",
+    "/admincontrol.php",
+    "/webmaster",
+    "/webmaster.php",
+    "/api/admin",
+    "/api/admin/login",
+    "/api/auth",
+    "/api/auth/login",
+    "/api/user",
+    "/api/users",
+    "/api/config",
+    "/api/settings",
+    "/api/database",
+    "/api/db",
+    "/setup.php",
+    "/install.php",
+    "/upgrade.php",
+    "/configuration.php",
+    "/settings.php",
+    "/config.php",
+    "/db_config.php",
+    "/database.php",
+    "/backup.php",
+    "/backup.zip",
+    "/backup.tar.gz",
+    "/dump.php",
+    "/download.php",
+    "/upload.php",
+    "/file.php",
+    "/files.php",
+    "/image.php",
+    "/include.php",
+    "/lib.php",
+    "/loader.php",
+    "/class.php",
+    "/function.php",
+    "/index2.php",
+    "/home.php",
+    "/test.php",
+    "/debug.php",
+    "/info.php",
+    "/phpinfo.php",
+    "/.htaccess",
+    "/.htpasswd",
+    "/.gitignore",
+    "/.gitattributes",
+    "/README.md",
+    "/CHANGELOG.md",
+    "/LICENSE",
+    "/composer.json",
+    "/package.json",
+    "/package-lock.json",
+    "/yarn.lock",
+    "/pom.xml",
+    "/build.gradle",
+    "/gradle.properties",
+    "/requirements.txt",
+    "/Gemfile",
+    "/Gemfile.lock",
+    "/Procfile",
+    "/Dockerfile",
+    "/docker-compose.yml",
+    "/docker-compose.yaml",
+    "/.env.local",
+    "/.env.development",
+    "/.env.production",
+    "/.env.test",
+    "/.env.staging",
+    "/config/database.yml",
+    "/config/secrets.yml",
+    "/config/credentials.yml.enc",
+    "/config/master.key",
+    "/shared/config/credentials.yml.enc",
+    "/shared/config/master.key",
+    "/etc/passwd",
+    "/etc/shadow",
+    "/etc/hosts",
+    "/etc/hostname",
+    "/proc/version",
+    "/proc/cpuinfo",
+    "/proc/meminfo",
+    "/windows/system32/config/sam",
+    "/windows/win.ini",
 }
 
 # Prefix / suffix patterns for paths not in the exact set above
-_DECOY_PREFIXES = ("/.git/", "/.svn/", "/.aws/", "/vendor/phpunit/", "/boaform/")
-_DECOY_SUFFIXES = (".sql", ".bak", ".zip", ".tar.gz", ".env")
+_DECOY_PREFIXES = (
+    "/.git/", "/.svn/", "/.aws/", "/vendor/phpunit/", "/boaform/",
+    "/.docker/", "/.kube/", "/.config/", "/ssh/", "/api/",
+    "/admin/", "/wp-content/", "/wp-includes/", "/node_modules/",
+    "/vendor/", "/src/", "/lib/", "/include/", "/classes/",
+)
+_DECOY_SUFFIXES = (
+    ".sql", ".bak", ".zip", ".tar.gz", ".env", ".log", ".tmp",
+    ".swp", ".swo", ".old", ".backup", ".dump", ".db", ".sqlite",
+    ".json", ".xml", ".yml", ".yaml", ".ini", ".conf", ".cfg",
+    ".key", ".pem", ".crt", ".p12", ".pfx", ".jks", ".keystore",
+)
 
 
 def _is_probe_path(path: str) -> bool:
@@ -296,6 +419,11 @@ def _validate_ip(value: str) -> str:
 
 
 def _limit_value(limit: int, maximum: int = 500) -> int:
+    """Safely clamp a limit value between 1 and maximum."""
+    try:
+        limit = int(limit)
+    except (ValueError, TypeError):
+        return 1
     return min(max(limit, 1), maximum)
 
 
@@ -320,7 +448,12 @@ def _enrich_event(event: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _request_payload(request: Request) -> dict[str, Any]:
-    body = await request.body()
+    """Safely extract and truncate request payload for logging."""
+    try:
+        body = await request.body()
+    except Exception:
+        body = b""
+    
     truncated = len(body) > settings.http_max_body_bytes
     if truncated:
         body = body[: settings.http_max_body_bytes]
@@ -328,25 +461,28 @@ async def _request_payload(request: Request) -> dict[str, Any]:
     form_data: dict[str, Any] = {}
     if body:
         content_type = request.headers.get("content-type", "")
-        if "application/json" in content_type:
-            try:
-                form_data = json.loads(body.decode("utf-8", errors="replace"))
-            except json.JSONDecodeError:
-                form_data = {"raw_body": body.decode("utf-8", errors="replace")}
-        elif "form" in content_type:
-            parsed = parse_qs(body.decode("utf-8", errors="replace"), keep_blank_values=True)
-            form_data = {key: values[-1] if values else "" for key, values in parsed.items()}
-        else:
+        try:
+            if "application/json" in content_type:
+                try:
+                    form_data = json.loads(body.decode("utf-8", errors="replace"))
+                except json.JSONDecodeError:
+                    form_data = {"raw_body": body.decode("utf-8", errors="replace")}
+            elif "form" in content_type:
+                parsed = parse_qs(body.decode("utf-8", errors="replace"), keep_blank_values=True)
+                form_data = {key: values[-1] if values else "" for key, values in parsed.items()}
+            else:
+                form_data = {"raw_body": body.decode("utf-8", errors="replace")[:2048]}
+        except Exception:
             form_data = {"raw_body": body.decode("utf-8", errors="replace")[:2048]}
 
     return {
         "method": request.method,
         "path": request.url.path,
         "query": str(request.url.query),
-        "user_agent": request.headers.get("user-agent", ""),
+        "user_agent": request.headers.get("user-agent", "")[:512],  # Limit UA length
         "headers": {
-            "host": request.headers.get("host", ""),
-            "referer": request.headers.get("referer", ""),
+            "host": request.headers.get("host", "")[:256],
+            "referer": request.headers.get("referer", "")[:512],
         },
         "body": form_data,
         "body_truncated": truncated,

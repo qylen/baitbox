@@ -135,6 +135,12 @@ def make_prompt(cwd: str, username: str = "root") -> bytes:
 def execute_session_command(session: SSHSession, command: str) -> tuple[bytes, bool]:
     """Return a fake shell response and whether the session should close."""
     command = command.strip()
+    
+    # Validate command length to prevent buffer overflow attacks
+    from ..config import settings
+    if len(command) > settings.max_command_length:
+        return b"bash: command line too long\r\n", False
+    
     session.add_command(command)
     try:
         parts = shlex.split(command, posix=True) if command else []
@@ -665,6 +671,96 @@ def execute_session_command(session: SSHSession, command: str) -> tuple[bytes, b
             lines = len(content.splitlines())
             return f'"{fname}" {lines}L, {len(content)}C\r\n'.encode(), False
         return f'"{fname}" [New File]\r\n'.encode(), False
+
+    if executable == "chmod":
+        if not args:
+            return b"chmod: missing operand\r\n", False
+        return b"", False  # Silent success for honeypot
+
+    if executable == "chown":
+        if not args:
+            return b"chown: missing operand\r\n", False
+        return b"", False  # Silent success for honeypot
+
+    if executable == "useradd":
+        if not args:
+            return b"useradd: missing operand\r\n", False
+        return b"", False  # Silent success for honeypot
+
+    if executable == "passwd":
+        if not args:
+            return b"passwd: missing operand\r\n", False
+        return b"New password: \r\nRetype new password: \r\npasswd: all authentication tokens updated successfully.\r\n", False
+
+    if executable == "tar":
+        if not args:
+            return b"tar: You must specify one of the -Acdrtux options\r\n", False
+        return b"", False  # Silent success for honeypot
+
+    if executable == "gzip":
+        if not args:
+            return b"gzip: compressed data not written to a terminal\r\n", False
+        return b"", False  # Silent success for honeypot
+
+    if executable == "zip":
+        if not args:
+            return b"zip: nothing to do\r\n", False
+        return b"", False  # Silent success for honeypot
+
+    if executable == "unzip":
+        if not args:
+            return b"unzip: need at least one file specification\r\n", False
+        return b"", False  # Silent success for honeypot
+
+    if executable == "which":
+        if not args:
+            return b"which: missing operand\r\n", False
+        cmd = args[0]
+        common_paths = {
+            "ls": "/bin/ls",
+            "cat": "/bin/cat",
+            "grep": "/bin/grep",
+            "python": "/usr/bin/python",
+            "python3": "/usr/bin/python3",
+            "wget": "/usr/bin/wget",
+            "curl": "/usr/bin/curl",
+            "ssh": "/usr/bin/ssh",
+            "nc": "/usr/bin/nc",
+            "nmap": "/usr/bin/nmap",
+        }
+        path = common_paths.get(cmd, f"/usr/bin/{cmd}")
+        return f"{path}\r\n".encode(), False
+
+    if executable == "whereis":
+        if not args:
+            return b"whereis: missing operand\r\n", False
+        cmd = args[0]
+        return f"{cmd}: /usr/bin/{cmd} /usr/share/man/man1/{cmd}.1.gz\r\n".encode(), False
+
+    if executable == "man":
+        if not args:
+            return b"What manual page do you want?\r\n", False
+        return b"No manual entry for {}\r\n".format(args[0]).encode(), False
+
+    if executable == "dpkg":
+        if not args:
+            return b"dpkg: requires an action option\r\n", False
+        return b"", False  # Silent success for honeypot
+
+    if executable == "apt":
+        if not args:
+            return b"apt: missing command\r\n", False
+        return b"", False  # Silent success for honeypot
+
+    if executable == "apt-get":
+        if not args:
+            return b"apt-get: missing command\r\n", False
+        return b"", False  # Silent success for honeypot
+
+    if executable == "yum":
+        if not args:
+            return b"yum: missing command\r\n", False
+        return b"", False  # Silent success for honeypot
 
     # Script execution
     run_file = ""
